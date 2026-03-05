@@ -304,7 +304,7 @@ def save_message_with_limits(session_id: str, role: str, content: str):
 
 
 # === AUDIO / TTS FUNCTIONS (FIX LATEX ÎN AUDIO + VOCE BĂRBAT) ===
-    # 2. UNITĂȚI DE MĂSURĂ CU CONTEXT (trebuie procesate PRIMELE!)
+       # 2. UNITĂȚI DE MĂSURĂ CU CONTEXT (trebuie procesate PRIMELE!)
     # Pattern pentru numere: întregi sau cu zecimale (0.1, 3.14, 100, 2,5)
     # (\d+[.,]?\d*) = una sau mai multe cifre, opțional punct/virgulă, opțional alte cifre
     
