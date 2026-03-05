@@ -314,35 +314,221 @@ def clean_text_for_audio(text: str) -> str:
                   ' Am desenat o figură pentru tine. ', text, flags=re.DOTALL)
     text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
     
-    # 2. Convertește LaTeX comun în text citibil (ROMÂNĂ)
+    # 2. CARACTERE UNICODE GRECEȘTI → Text citibil (ROMÂNĂ)
+    greek_unicode = {
+        # Litere mici grecești
+        'α': ' alfa ',
+        'β': ' beta ',
+        'γ': ' gama ',
+        'δ': ' delta ',
+        'ε': ' epsilon ',
+        'ζ': ' zeta ',
+        'η': ' eta ',
+        'θ': ' teta ',
+        'ι': ' iota ',
+        'κ': ' kapa ',
+        'λ': ' lambda ',
+        'μ': ' miu ',
+        'ν': ' niu ',
+        'ξ': ' csi ',
+        'ο': ' omicron ',
+        'π': ' pi ',
+        'ρ': ' ro ',
+        'σ': ' sigma ',
+        'ς': ' sigma ',  # sigma finală
+        'τ': ' tau ',
+        'υ': ' ipsilon ',
+        'φ': ' fi ',
+        'χ': ' hi ',
+        'ψ': ' psi ',
+        'ω': ' omega ',
+        
+        # Litere mari grecești
+        'Α': ' alfa ',
+        'Β': ' beta ',
+        'Γ': ' gama ',
+        'Δ': ' delta ',
+        'Ε': ' epsilon ',
+        'Ζ': ' zeta ',
+        'Η': ' eta ',
+        'Θ': ' teta ',
+        'Ι': ' iota ',
+        'Κ': ' kapa ',
+        'Λ': ' lambda ',
+        'Μ': ' miu ',
+        'Ν': ' niu ',
+        'Ξ': ' csi ',
+        'Ο': ' omicron ',
+        'Π': ' pi ',
+        'Ρ': ' ro ',
+        'Σ': ' sigma ',
+        'Τ': ' tau ',
+        'Υ': ' ipsilon ',
+        'Φ': ' fi ',
+        'Χ': ' hi ',
+        'Ψ': ' psi ',
+        'Ω': ' omega ',
+        
+        # Simboluri matematice speciale
+        '∞': ' infinit ',
+        '∑': ' suma ',
+        '∏': ' produsul ',
+        '∫': ' integrala ',
+        '∂': ' derivata parțială ',
+        '√': ' radical din ',
+        '∛': ' radical de ordin 3 din ',
+        '∜': ' radical de ordin 4 din ',
+        '±': ' plus minus ',
+        '∓': ' minus plus ',
+        '×': ' ori ',
+        '÷': ' împărțit la ',
+        '≠': ' diferit de ',
+        '≈': ' aproximativ egal cu ',
+        '≡': ' identic cu ',
+        '≤': ' mai mic sau egal cu ',
+        '≥': ' mai mare sau egal cu ',
+        '≪': ' mult mai mic decât ',
+        '≫': ' mult mai mare decât ',
+        '∝': ' proporțional cu ',
+        '∈': ' aparține lui ',
+        '∉': ' nu aparține lui ',
+        '⊂': ' inclus în ',
+        '⊃': ' include ',
+        '⊆': ' inclus sau egal cu ',
+        '⊇': ' include sau egal cu ',
+        '∪': ' reunit cu ',
+        '∩': ' intersectat cu ',
+        '∅': ' mulțimea vidă ',
+        '∀': ' pentru orice ',
+        '∃': ' există ',
+        '∄': ' nu există ',
+        '∴': ' deci ',
+        '∵': ' deoarece ',
+        '→': ' implică ',
+        '←': ' rezultă din ',
+        '↔': ' echivalent cu ',
+        '⇒': ' rezultă că ',
+        '⇐': ' provine din ',
+        '⇔': ' dacă și numai dacă ',
+        '°': ' grade ',
+        '′': ' prim ',
+        '″': ' secund ',
+        '‰': ' la mie ',
+        '∠': ' unghiul ',
+        '⊥': ' perpendicular pe ',
+        '∥': ' paralel cu ',
+        '△': ' triunghiul ',
+        '□': ' pătratul ',
+        '○': ' cercul ',
+        
+        # Indici și exponenți Unicode
+        '⁰': ' la puterea 0 ',
+        '¹': ' la puterea 1 ',
+        '²': ' la pătrat ',
+        '³': ' la cub ',
+        '⁴': ' la puterea 4 ',
+        '⁵': ' la puterea 5 ',
+        '⁶': ' la puterea 6 ',
+        '⁷': ' la puterea 7 ',
+        '⁸': ' la puterea 8 ',
+        '⁹': ' la puterea 9 ',
+        '⁺': ' plus ',
+        '⁻': ' minus ',
+        '⁼': ' egal ',
+        '₀': ' indice 0 ',
+        '₁': ' indice 1 ',
+        '₂': ' indice 2 ',
+        '₃': ' indice 3 ',
+        '₄': ' indice 4 ',
+        '₅': ' indice 5 ',
+        '₆': ' indice 6 ',
+        '₇': ' indice 7 ',
+        '₈': ' indice 8 ',
+        '₉': ' indice 9 ',
+        '₊': ' plus ',
+        '₋': ' minus ',
+        '₌': ' egal ',
+        
+        # Fracții Unicode
+        '½': ' o doime ',
+        '⅓': ' o treime ',
+        '⅔': ' două treimi ',
+        '¼': ' un sfert ',
+        '¾': ' trei sferturi ',
+        '⅕': ' o cincime ',
+        '⅖': ' două cincimi ',
+        '⅗': ' trei cincimi ',
+        '⅘': ' patru cincimi ',
+        '⅙': ' o șesime ',
+        '⅚': ' cinci șesimi ',
+        '⅛': ' o optime ',
+        '⅜': ' trei optimi ',
+        '⅝': ' cinci optimi ',
+        '⅞': ' șapte optimi ',
+    }
+    
+    # Aplică conversiile Unicode
+    for symbol, pronunciation in greek_unicode.items():
+        text = text.replace(symbol, pronunciation)
+    
+    # 3. Convertește LaTeX comun în text citibil (ROMÂNĂ)
     latex_to_text = {
         # Operații de bază
-        r'\\sqrt\{([^}]+)\}': r'radical din \1',
-        r'\\sqrt\[(\d+)\]\{([^}]+)\}': r'radical de ordin \1 din \2',
-        r'\\frac\{([^}]+)\}\{([^}]+)\}': r'\1 supra \2',
-        r'\\dfrac\{([^}]+)\}\{([^}]+)\}': r'\1 supra \2',
+        r'\\sqrt\{([^}]+)\}': r' radical din \1 ',
+        r'\\sqrt\[(\d+)\]\{([^}]+)\}': r' radical de ordin \1 din \2 ',
+        r'\\frac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
+        r'\\dfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
+        r'\\tfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
         
         # Puteri și indici
-        r'\^(\d+)': r' la puterea \1',
-        r'\^\{([^}]+)\}': r' la puterea \1',
-        r'_(\d+)': r' indice \1',
-        r'_\{([^}]+)\}': r' indice \1',
+        r'\^(\d+)': r' la puterea \1 ',
+        r'\^\{([^}]+)\}': r' la puterea \1 ',
+        r'_(\d+)': r' indice \1 ',
+        r'_\{([^}]+)\}': r' indice \1 ',
         
-        # Simboluri grecești
-        r'\\alpha': 'alfa',
-        r'\\beta': 'beta',
-        r'\\gamma': 'gama',
-        r'\\delta': 'delta',
-        r'\\theta': 'teta',
-        r'\\lambda': 'lambda',
-        r'\\pi': 'pi',
-        r'\\sigma': 'sigma',
-        r'\\omega': 'omega',
-        r'\\phi': 'fi',
-        r'\\psi': 'psi',
-        r'\\rho': 'ro',
-        r'\\mu': 'miu',
-        r'\\epsilon': 'epsilon',
+        # Simboluri grecești LaTeX
+        r'\\alpha': ' alfa ',
+        r'\\beta': ' beta ',
+        r'\\gamma': ' gama ',
+        r'\\delta': ' delta ',
+        r'\\epsilon': ' epsilon ',
+        r'\\varepsilon': ' epsilon ',
+        r'\\zeta': ' zeta ',
+        r'\\eta': ' eta ',
+        r'\\theta': ' teta ',
+        r'\\vartheta': ' teta ',
+        r'\\iota': ' iota ',
+        r'\\kappa': ' kapa ',
+        r'\\lambda': ' lambda ',
+        r'\\mu': ' miu ',
+        r'\\nu': ' niu ',
+        r'\\xi': ' csi ',
+        r'\\pi': ' pi ',
+        r'\\varpi': ' pi ',
+        r'\\rho': ' ro ',
+        r'\\varrho': ' ro ',
+        r'\\sigma': ' sigma ',
+        r'\\varsigma': ' sigma ',
+        r'\\tau': ' tau ',
+        r'\\upsilon': ' ipsilon ',
+        r'\\phi': ' fi ',
+        r'\\varphi': ' fi ',
+        r'\\chi': ' hi ',
+        r'\\psi': ' psi ',
+        r'\\omega': ' omega ',
+        
+        # Litere mari grecești LaTeX
+        r'\\Gamma': ' gama ',
+        r'\\Delta': ' delta ',
+        r'\\Theta': ' teta ',
+        r'\\Lambda': ' lambda ',
+        r'\\Xi': ' csi ',
+        r'\\Pi': ' pi ',
+        r'\\Sigma': ' sigma ',
+        r'\\Upsilon': ' ipsilon ',
+        r'\\Phi': ' fi ',
+        r'\\Psi': ' psi ',
+        r'\\Omega': ' omega ',
         
         # Operatori
         r'\\times': ' ori ',
@@ -355,59 +541,106 @@ def clean_text_for_audio(text: str) -> str:
         r'\\neq': ' diferit de ',
         r'\\approx': ' aproximativ egal cu ',
         r'\\equiv': ' echivalent cu ',
-        r'\\infty': ' infinit',
+        r'\\sim': ' similar cu ',
+        r'\\propto': ' proporțional cu ',
+        r'\\infty': ' infinit ',
         r'\\sum': ' suma ',
         r'\\prod': ' produsul ',
         r'\\int': ' integrala ',
+        r'\\iint': ' integrala dublă ',
+        r'\\iiint': ' integrala triplă ',
+        r'\\oint': ' integrala pe contur ',
         r'\\lim': ' limita ',
         r'\\log': ' logaritm ',
-        r'\\ln': ' logaritm natural ',
-        r'\\sin': ' sinus ',
-        r'\\cos': ' cosinus ',
-        r'\\tan': ' tangentă ',
-        r'\\cot': ' cotangentă ',
+        r'\\ln': ' logaritm natural de ',
+        r'\\lg': ' logaritm zecimal de ',
+        r'\\sin': ' sinus de ',
+        r'\\cos': ' cosinus de ',
+        r'\\tan': ' tangentă de ',
+        r'\\tg': ' tangentă de ',
+        r'\\cot': ' cotangentă de ',
+        r'\\ctg': ' cotangentă de ',
+        r'\\sec': ' secantă de ',
+        r'\\csc': ' cosecantă de ',
+        r'\\arcsin': ' arc sinus de ',
+        r'\\arccos': ' arc cosinus de ',
+        r'\\arctan': ' arc tangentă de ',
+        r'\\arctg': ' arc tangentă de ',
+        r'\\sinh': ' sinus hiperbolic de ',
+        r'\\cosh': ' cosinus hiperbolic de ',
+        r'\\tanh': ' tangentă hiperbolică de ',
         
         # Fracții speciale
         r'\\frac\{1\}\{2\}': ' o doime ',
         r'\\frac\{1\}\{3\}': ' o treime ',
+        r'\\frac\{2\}\{3\}': ' două treimi ',
         r'\\frac\{1\}\{4\}': ' un sfert ',
         r'\\frac\{3\}\{4\}': ' trei sferturi ',
         
-        # Alte simboluri
+        # Săgeți și relații
         r'\\rightarrow': ' implică ',
+        r'\\to': ' tinde la ',
         r'\\Rightarrow': ' rezultă că ',
-        r'\\leftarrow': ' de la ',
+        r'\\leftarrow': ' provine din ',
+        r'\\Leftarrow': ' este implicat de ',
         r'\\leftrightarrow': ' echivalent cu ',
+        r'\\Leftrightarrow': ' dacă și numai dacă ',
         r'\\forall': ' pentru orice ',
         r'\\exists': ' există ',
+        r'\\nexists': ' nu există ',
         r'\\in': ' aparține lui ',
         r'\\notin': ' nu aparține lui ',
         r'\\subset': ' inclus în ',
+        r'\\supset': ' include ',
+        r'\\subseteq': ' inclus sau egal cu ',
+        r'\\supseteq': ' include sau egal cu ',
         r'\\cup': ' reunit cu ',
         r'\\cap': ' intersectat cu ',
         r'\\emptyset': ' mulțimea vidă ',
+        r'\\varnothing': ' mulțimea vidă ',
+        
+        # Mulțimi speciale
         r'\\mathbb\{R\}': ' mulțimea numerelor reale ',
         r'\\mathbb\{N\}': ' mulțimea numerelor naturale ',
         r'\\mathbb\{Z\}': ' mulțimea numerelor întregi ',
         r'\\mathbb\{Q\}': ' mulțimea numerelor raționale ',
+        r'\\mathbb\{C\}': ' mulțimea numerelor complexe ',
+        r'\\R': ' mulțimea numerelor reale ',
+        r'\\N': ' mulțimea numerelor naturale ',
+        r'\\Z': ' mulțimea numerelor întregi ',
+        r'\\Q': ' mulțimea numerelor raționale ',
+        r'\\C': ' mulțimea numerelor complexe ',
+        
+        # Alte simboluri
+        r'\\partial': ' derivata parțială ',
+        r'\\nabla': ' nabla ',
+        r'\\degree': ' grade ',
+        r'\\circ': ' grad ',
+        r'\\angle': ' unghiul ',
+        r'\\perp': ' perpendicular pe ',
+        r'\\parallel': ' paralel cu ',
+        r'\\triangle': ' triunghiul ',
+        r'\\square': ' pătratul ',
+        r'\\therefore': ' deci ',
+        r'\\because': ' deoarece ',
     }
     
     # Aplică conversiile LaTeX
     for pattern, replacement in latex_to_text.items():
         text = re.sub(pattern, replacement, text)
     
-    # 3. Elimină delimitatorii LaTeX rămași
+    # 4. Elimină delimitatorii LaTeX rămași
     text = re.sub(r'\$\$([^$]+)\$\$', r' \1 ', text)
     text = re.sub(r'\$([^$]+)\$', r' \1 ', text)
     text = re.sub(r'\\\[(.+?)\\\]', r' \1 ', text, flags=re.DOTALL)
     text = re.sub(r'\\\((.+?)\\\)', r' \1 ', text)
     
-    # 4. Curăță comenzile LaTeX rămase
+    # 5. Curăță comenzile LaTeX rămase
     text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
     text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = re.sub(r'[{}\\]', '', text)
     
-    # 5. Elimină Markdown
+    # 6. Elimină Markdown
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
     text = re.sub(r'\*([^*]+)\*', r'\1', text)
     text = re.sub(r'`([^`]+)`', r'\1', text)
@@ -415,14 +648,14 @@ def clean_text_for_audio(text: str) -> str:
     text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     
-    # 6. Elimină HTML rămas
+    # 7. Elimină HTML rămas
     text = re.sub(r'<[^>]+>', '', text)
     
-    # 7. Curăță spații multiple și caractere speciale
+    # 8. Curăță spații multiple și caractere speciale
     text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[│▌►◄●○■□▪▫]', '', text)
+    text = re.sub(r'[│▌►◄●○■□▪▫•·]', '', text)
     
-    # 8. Limitează lungimea
+    # 9. Limitează lungimea
     text = text.strip()
     if len(text) > 3000:
         text = text[:3000]
