@@ -1,29 +1,60 @@
 import streamlit as st
-import google.generativeai as genai
-from PIL import Image
-import edge_tts
-import asyncio
-from io import BytesIO
 import sqlite3
 import uuid
 import time
 import tempfile
 import ast
 import re
+from io import BytesIO
+
+# === IMPORTS CU VERIFICARE ===
+try:
+    import google.generativeai as genai
+except ImportError:
+    st.error("❌ Lipsește 'google-generativeai'. Verifică requirements.txt!")
+    st.stop()
+
+try:
+    from PIL import Image
+except ImportError:
+    st.error("❌ Lipsește 'Pillow'. Verifică requirements.txt!")
+    st.stop()
+
+# TTS - opțional, cu fallback
+EDGE_TTS_AVAILABLE = False
+GTTS_AVAILABLE = False
+
+try:
+    import edge_tts
+    import asyncio
+    EDGE_TTS_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    from gtts import gTTS
+    GTTS_AVAILABLE = True
+except ImportError:
+    pass
 
 
-# === CONSTANTE PENTRU LIMITE (FIX MEMORY LEAK) ===
+# === CONSTANTE ===
 MAX_MESSAGES_IN_MEMORY = 100
 MAX_MESSAGES_TO_SEND_TO_AI = 20
 MAX_MESSAGES_IN_DB_PER_SESSION = 500
 CLEANUP_DAYS_OLD = 7
 
-# === VOCI EDGE TTS (VOCE BĂRBAT) ===
 VOICE_MALE_RO = "ro-RO-EmilNeural"
 VOICE_FEMALE_RO = "ro-RO-AlinaNeural"
 
 
-st.set_page_config(page_title="Profesor Liceu", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
+# === CONFIG STREAMLIT ===
+st.set_page_config(
+    page_title="Profesor Liceu",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 st.markdown("""
 <style>
@@ -56,11 +87,9 @@ def get_db_connection():
 
 
 def init_db():
-    """Inițializează baza de date cu toate tabelele necesare."""
     conn = get_db_connection()
     c = conn.cursor()
     
-    # Tabelul pentru mesaje
     c.execute('''
         CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,13 +100,11 @@ def init_db():
         )
     ''')
     
-    # Index pentru căutări rapide
     c.execute('''
         CREATE INDEX IF NOT EXISTS idx_history_session 
         ON history(session_id)
     ''')
     
-    # Tabelul pentru sesiuni (FIX SESSION ID COLLISION)
     c.execute('''
         CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
@@ -91,29 +118,19 @@ def init_db():
 
 
 def cleanup_old_sessions(days_old: int = CLEANUP_DAYS_OLD):
-    """Șterge sesiunile și mesajele mai vechi de X zile."""
     try:
         conn = get_db_connection()
         c = conn.cursor()
         cutoff_time = time.time() - (days_old * 24 * 60 * 60)
-        
         c.execute("DELETE FROM history WHERE timestamp < ?", (cutoff_time,))
-        deleted_messages = c.rowcount
-        
         c.execute("DELETE FROM sessions WHERE last_active < ?", (cutoff_time,))
-        deleted_sessions = c.rowcount
-        
         conn.commit()
         conn.close()
-        
-        if deleted_messages > 0 or deleted_sessions > 0:
-            print(f"Cleanup: {deleted_messages} mesaje, {deleted_sessions} sesiuni șterse")
     except Exception as e:
         print(f"Eroare la cleanup: {e}")
 
 
 def save_message_to_db(session_id, role, content):
-    """Salvează un mesaj în baza de date."""
     try:
         conn = get_db_connection()
         c = conn.cursor()
@@ -128,12 +145,9 @@ def save_message_to_db(session_id, role, content):
 
 
 def load_history_from_db(session_id, limit: int = MAX_MESSAGES_IN_MEMORY):
-    """Încarcă istoricul din DB cu limită (FIX MEMORY LEAK)."""
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        
-        # Ia ultimele N mesaje, ordonate cronologic
         c.execute("""
             SELECT role, content FROM (
                 SELECT role, content, timestamp 
@@ -143,7 +157,6 @@ def load_history_from_db(session_id, limit: int = MAX_MESSAGES_IN_MEMORY):
                 LIMIT ?
             ) ORDER BY timestamp ASC
         """, (session_id, limit))
-        
         data = c.fetchall()
         conn.close()
         return [{"role": row[0], "content": row[1]} for row in data]
@@ -153,7 +166,6 @@ def load_history_from_db(session_id, limit: int = MAX_MESSAGES_IN_MEMORY):
 
 
 def clear_history_db(session_id):
-    """Șterge istoricul pentru o sesiune."""
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("DELETE FROM history WHERE session_id=?", (session_id,))
@@ -162,17 +174,14 @@ def clear_history_db(session_id):
 
 
 def trim_db_messages(session_id: str):
-    """Limitează mesajele din DB pentru o sesiune (FIX MEMORY LEAK)."""
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        
         c.execute("SELECT COUNT(*) FROM history WHERE session_id = ?", (session_id,))
         count = c.fetchone()[0]
         
         if count > MAX_MESSAGES_IN_DB_PER_SESSION:
             to_delete = count - MAX_MESSAGES_IN_DB_PER_SESSION
-            
             c.execute("""
                 DELETE FROM history 
                 WHERE session_id = ? 
@@ -183,16 +192,14 @@ def trim_db_messages(session_id: str):
                     LIMIT ?
                 )
             """, (session_id, session_id, to_delete))
-            
             conn.commit()
         conn.close()
     except Exception as e:
         print(f"Eroare la curățarea DB: {e}")
 
 
-# === SESSION MANAGEMENT (FIX SESSION ID COLLISION) ===
+# === SESSION MANAGEMENT ===
 def generate_unique_session_id() -> str:
-    """Generează un session ID garantat unic."""
     uuid_part = uuid.uuid4().hex[:16]
     time_part = hex(int(time.time() * 1000000))[2:][-8:]
     random_part = uuid.uuid4().hex[:8]
@@ -200,7 +207,6 @@ def generate_unique_session_id() -> str:
 
 
 def session_exists_in_db(session_id: str) -> bool:
-    """Verifică dacă un session_id există deja în baza de date."""
     try:
         conn = get_db_connection()
         c = conn.cursor()
@@ -208,12 +214,11 @@ def session_exists_in_db(session_id: str) -> bool:
         exists = c.fetchone() is not None
         conn.close()
         return exists
-    except sqlite3.OperationalError:
+    except:
         return False
 
 
 def register_session(session_id: str):
-    """Înregistrează o sesiune nouă în baza de date."""
     try:
         conn = get_db_connection()
         c = conn.cursor()
@@ -228,7 +233,6 @@ def register_session(session_id: str):
 
 
 def update_session_activity(session_id: str):
-    """Actualizează timestamp-ul ultimei activități."""
     try:
         conn = get_db_connection()
         c = conn.cursor()
@@ -240,50 +244,41 @@ def update_session_activity(session_id: str):
 
 
 def get_or_create_session_id() -> str:
-    """Obține session ID existent sau creează unul nou unic."""
-    # Verifică în query params
     if "session_id" in st.query_params:
         existing_id = st.query_params["session_id"]
         if existing_id and len(existing_id) >= 16:
             return existing_id
     
-    # Verifică în session state
     if "session_id" in st.session_state:
         existing_id = st.session_state.session_id
         if existing_id and len(existing_id) >= 16:
             return existing_id
     
-    # Generează nou și verifică unicitatea
     for _ in range(10):
         new_id = generate_unique_session_id()
         if not session_exists_in_db(new_id):
             register_session(new_id)
             return new_id
     
-    # Fallback extrem
     fallback_id = f"{uuid.uuid4().hex}{int(time.time())}"
     register_session(fallback_id)
     return fallback_id
 
 
-# === MEMORY MANAGEMENT (FIX MEMORY LEAK) ===
+# === MEMORY MANAGEMENT ===
 def trim_session_messages():
-    """Limitează mesajele din session_state pentru a preveni memory leak."""
     if "messages" in st.session_state:
         current_count = len(st.session_state.messages)
-        
         if current_count > MAX_MESSAGES_IN_MEMORY:
             excess = current_count - MAX_MESSAGES_IN_MEMORY
             st.session_state.messages = st.session_state.messages[excess:]
-            st.toast(f"📝 Am arhivat {excess} mesaje vechi pentru performanță.", icon="📦")
+            st.toast(f"📝 Am arhivat {excess} mesaje vechi.", icon="📦")
 
 
 def get_context_for_ai(messages: list) -> list:
-    """Pregătește contextul pentru AI cu limită de mesaje."""
     if len(messages) <= MAX_MESSAGES_TO_SEND_TO_AI:
         return messages[:-1]
     
-    # Strategia: primul mesaj + ultimele N-1 mesaje
     first_message = messages[0] if messages else None
     recent_messages = messages[-(MAX_MESSAGES_TO_SEND_TO_AI - 1):-1]
     
@@ -293,42 +288,32 @@ def get_context_for_ai(messages: list) -> list:
 
 
 def save_message_with_limits(session_id: str, role: str, content: str):
-    """Salvează mesaj și verifică limitele."""
     save_message_to_db(session_id, role, content)
-    
-    # Verifică și curăță DB-ul la fiecare 10 mesaje
     if len(st.session_state.get("messages", [])) % 10 == 0:
         trim_db_messages(session_id)
-    
     trim_session_messages()
 
 
-# === AUDIO / TTS FUNCTIONS (FIX LATEX ÎN AUDIO + VOCE BĂRBAT) ===
+# === AUDIO / TTS FUNCTIONS ===
 def clean_text_for_audio(text: str) -> str:
-    """Curăță textul de LaTeX, SVG, Markdown pentru TTS."""
     if not text:
         return ""
     
-    # 1. Elimină blocuri SVG complet
+    # Elimină SVG
     text = re.sub(r'\[\[DESEN_SVG\]\].*?\[\[/DESEN_SVG\]\]', 
                   ' Am desenat o figură pentru tine. ', text, flags=re.DOTALL)
     text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
     
-    # 2. Convertește LaTeX comun în text citibil (ROMÂNĂ)
+    # Convertește LaTeX în text citibil
     latex_to_text = {
-        # Operații de bază
         r'\\sqrt\{([^}]+)\}': r'radical din \1',
         r'\\sqrt\[(\d+)\]\{([^}]+)\}': r'radical de ordin \1 din \2',
         r'\\frac\{([^}]+)\}\{([^}]+)\}': r'\1 supra \2',
         r'\\dfrac\{([^}]+)\}\{([^}]+)\}': r'\1 supra \2',
-        
-        # Puteri și indici
         r'\^(\d+)': r' la puterea \1',
         r'\^\{([^}]+)\}': r' la puterea \1',
         r'_(\d+)': r' indice \1',
         r'_\{([^}]+)\}': r' indice \1',
-        
-        # Simboluri grecești
         r'\\alpha': 'alfa',
         r'\\beta': 'beta',
         r'\\gamma': 'gama',
@@ -339,25 +324,16 @@ def clean_text_for_audio(text: str) -> str:
         r'\\sigma': 'sigma',
         r'\\omega': 'omega',
         r'\\phi': 'fi',
-        r'\\psi': 'psi',
-        r'\\rho': 'ro',
-        r'\\mu': 'miu',
-        r'\\epsilon': 'epsilon',
-        
-        # Operatori
         r'\\times': ' ori ',
         r'\\cdot': ' ori ',
         r'\\div': ' împărțit la ',
         r'\\pm': ' plus minus ',
-        r'\\mp': ' minus plus ',
         r'\\leq': ' mai mic sau egal cu ',
         r'\\geq': ' mai mare sau egal cu ',
         r'\\neq': ' diferit de ',
         r'\\approx': ' aproximativ egal cu ',
-        r'\\equiv': ' echivalent cu ',
         r'\\infty': ' infinit',
         r'\\sum': ' suma ',
-        r'\\prod': ' produsul ',
         r'\\int': ' integrala ',
         r'\\lim': ' limita ',
         r'\\log': ' logaritm ',
@@ -365,49 +341,29 @@ def clean_text_for_audio(text: str) -> str:
         r'\\sin': ' sinus ',
         r'\\cos': ' cosinus ',
         r'\\tan': ' tangentă ',
-        r'\\cot': ' cotangentă ',
-        
-        # Fracții speciale
-        r'\\frac\{1\}\{2\}': ' o doime ',
-        r'\\frac\{1\}\{3\}': ' o treime ',
-        r'\\frac\{1\}\{4\}': ' un sfert ',
-        r'\\frac\{3\}\{4\}': ' trei sferturi ',
-        
-        # Alte simboluri
         r'\\rightarrow': ' implică ',
         r'\\Rightarrow': ' rezultă că ',
-        r'\\leftarrow': ' de la ',
-        r'\\leftrightarrow': ' echivalent cu ',
-        r'\\forall': ' pentru orice ',
-        r'\\exists': ' există ',
-        r'\\in': ' aparține lui ',
-        r'\\notin': ' nu aparține lui ',
+        r'\\in': ' aparține ',
         r'\\subset': ' inclus în ',
         r'\\cup': ' reunit cu ',
         r'\\cap': ' intersectat cu ',
-        r'\\emptyset': ' mulțimea vidă ',
-        r'\\mathbb\{R\}': ' mulțimea numerelor reale ',
-        r'\\mathbb\{N\}': ' mulțimea numerelor naturale ',
-        r'\\mathbb\{Z\}': ' mulțimea numerelor întregi ',
-        r'\\mathbb\{Q\}': ' mulțimea numerelor raționale ',
     }
     
-    # Aplică conversiile LaTeX
     for pattern, replacement in latex_to_text.items():
         text = re.sub(pattern, replacement, text)
     
-    # 3. Elimină delimitatorii LaTeX rămași
+    # Elimină delimitatori LaTeX
     text = re.sub(r'\$\$([^$]+)\$\$', r' \1 ', text)
     text = re.sub(r'\$([^$]+)\$', r' \1 ', text)
     text = re.sub(r'\\\[(.+?)\\\]', r' \1 ', text, flags=re.DOTALL)
     text = re.sub(r'\\\((.+?)\\\)', r' \1 ', text)
     
-    # 4. Curăță comenzile LaTeX rămase
+    # Curăță comenzi LaTeX rămase
     text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
     text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = re.sub(r'[{}\\]', '', text)
     
-    # 5. Elimină Markdown
+    # Elimină Markdown
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
     text = re.sub(r'\*([^*]+)\*', r'\1', text)
     text = re.sub(r'`([^`]+)`', r'\1', text)
@@ -415,14 +371,13 @@ def clean_text_for_audio(text: str) -> str:
     text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     
-    # 6. Elimină HTML rămas
+    # Elimină HTML
     text = re.sub(r'<[^>]+>', '', text)
     
-    # 7. Curăță spații multiple și caractere speciale
+    # Curăță spații
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[│▌►◄●○■□▪▫]', '', text)
     
-    # 8. Limitează lungimea
     text = text.strip()
     if len(text) > 3000:
         text = text[:3000]
@@ -433,65 +388,66 @@ def clean_text_for_audio(text: str) -> str:
     return text
 
 
-async def _generate_audio_edge_tts(text: str, voice: str = VOICE_MALE_RO) -> bytes | None:
-    """Generează audio folosind Edge TTS (async)."""
-    try:
-        clean_text = clean_text_for_audio(text)
-        
-        if not clean_text or len(clean_text.strip()) < 10:
-            return None
-        
-        communicate = edge_tts.Communicate(clean_text, voice)
-        audio_data = BytesIO()
-        
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_data.write(chunk["data"])
-        
-        audio_data.seek(0)
-        return audio_data.getvalue()
-        
-    except Exception as e:
-        print(f"Eroare Edge TTS: {e}")
+def generate_professor_voice(text: str, voice: str = VOICE_MALE_RO) -> BytesIO:
+    """Generează audio cu fallback automat."""
+    clean_text = clean_text_for_audio(text)
+    
+    if not clean_text or len(clean_text) < 10:
         return None
-
-
-def generate_professor_voice(text: str, voice: str = VOICE_MALE_RO) -> BytesIO | None:
-    """Wrapper sincron pentru Edge TTS - voce de bărbat (Domnul Profesor)."""
-    try:
-        # Creează un nou event loop pentru fiecare apel
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
+    
+    # Încearcă Edge TTS (voce bărbat)
+    if EDGE_TTS_AVAILABLE:
         try:
-            audio_bytes = loop.run_until_complete(_generate_audio_edge_tts(text, voice))
-        finally:
-            loop.close()
-        
-        if audio_bytes:
-            audio_file = BytesIO(audio_bytes)
-            audio_file.seek(0)
-            return audio_file
-        return None
-        
-    except Exception as e:
-        print(f"Eroare la generarea vocii: {e}")
-        return None
+            selected_voice = voice if voice else VOICE_MALE_RO
+            
+            async def _generate_edge():
+                communicate = edge_tts.Communicate(clean_text, selected_voice)
+                audio_data = BytesIO()
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_data.write(chunk["data"])
+                audio_data.seek(0)
+                return audio_data.getvalue()
+            
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                audio_bytes = loop.run_until_complete(_generate_edge())
+            finally:
+                loop.close()
+            
+            if audio_bytes:
+                result = BytesIO(audio_bytes)
+                result.seek(0)
+                return result
+                
+        except Exception as e:
+            print(f"Edge TTS failed: {e}")
+    
+    # Fallback la gTTS
+    if GTTS_AVAILABLE:
+        try:
+            sound_file = BytesIO()
+            tts = gTTS(text=clean_text[:2000], lang='ro', slow=False)
+            tts.write_to_fp(sound_file)
+            sound_file.seek(0)
+            return sound_file
+        except Exception as e:
+            print(f"gTTS failed: {e}")
+    
+    return None
 
 
-# === SVG FUNCTIONS (FIX SVG FĂRĂ CLOSE TAG) ===
+# === SVG FUNCTIONS ===
 def repair_svg(svg_content: str) -> str:
-    """Repară SVG incomplet sau malformat."""
     if not svg_content:
         return None
     
     svg_content = svg_content.strip()
     
-    # Verifică dacă avem tag <svg> de deschidere
     has_svg_open = bool(re.search(r'<svg[^>]*>', svg_content, re.IGNORECASE))
     has_svg_close = '</svg>' in svg_content.lower()
     
-    # Cazul 1: Lipsește complet <svg>
     if not has_svg_open:
         svg_content = f'''<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg" 
                              style="max-width: 100%; height: auto; background-color: white;">
@@ -499,22 +455,17 @@ def repair_svg(svg_content: str) -> str:
         </svg>'''
         return svg_content
     
-    # Cazul 2: Are <svg> dar lipsește </svg>
     if has_svg_open and not has_svg_close:
         svg_content = svg_content + '\n</svg>'
     
-    # Cazul 3: Are </svg> dar lipsește <svg>
     if not has_svg_open and has_svg_close:
         svg_content = f'<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">\n{svg_content}'
     
-    # Repară tag-uri ne-închise
     svg_content = repair_unclosed_tags(svg_content)
     
-    # Adaugă xmlns dacă lipsește
     if 'xmlns=' not in svg_content:
         svg_content = svg_content.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"', 1)
     
-    # Adaugă viewBox dacă lipsește
     if 'viewBox=' not in svg_content.lower():
         svg_content = svg_content.replace('<svg', '<svg viewBox="0 0 800 600"', 1)
     
@@ -522,32 +473,23 @@ def repair_svg(svg_content: str) -> str:
 
 
 def repair_unclosed_tags(svg_content: str) -> str:
-    """Repară tag-uri SVG comune care nu sunt închise corect."""
-    # Tag-uri care trebuie să fie self-closing
     self_closing_tags = ['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'image', 'use']
     
     for tag in self_closing_tags:
-        # Pattern: <tag ... > fără />
         pattern = rf'<{tag}([^>]*[^/])>'
-        
         def fix_tag(match):
             attrs = match.group(1)
             return f'<{tag}{attrs}/>'
-        
         svg_content = re.sub(pattern, fix_tag, svg_content)
     
-    # Repară tag-uri <text> ne-închise
     text_opens = len(re.findall(r'<text[^>]*>', svg_content))
     text_closes = len(re.findall(r'</text>', svg_content))
-    
     if text_opens > text_closes:
         for _ in range(text_opens - text_closes):
             svg_content = svg_content.replace('</svg>', '</text></svg>')
     
-    # Repară tag-uri <g> ne-închise
     g_opens = len(re.findall(r'<g[^>]*>', svg_content))
     g_closes = len(re.findall(r'</g>', svg_content))
-    
     if g_opens > g_closes:
         for _ in range(g_opens - g_closes):
             svg_content = svg_content.replace('</svg>', '</g></svg>')
@@ -556,7 +498,6 @@ def repair_unclosed_tags(svg_content: str) -> str:
 
 
 def validate_svg(svg_content: str) -> tuple:
-    """Validează SVG și returnează (is_valid, error_message)."""
     if not svg_content:
         return False, "SVG gol"
     
@@ -566,7 +507,6 @@ def validate_svg(svg_content: str) -> tuple:
     if '</svg>' not in svg_content.lower():
         return False, "Lipsește tag-ul </svg>"
     
-    # Verifică dacă are conținut vizual
     visual_elements = ['path', 'rect', 'circle', 'ellipse', 'line', 'text', 'polygon', 'polyline', 'image']
     has_content = any(f'<{elem}' in svg_content.lower() for elem in visual_elements)
     
@@ -577,13 +517,10 @@ def validate_svg(svg_content: str) -> tuple:
 
 
 def render_message_with_svg(content: str):
-    """Renderează mesajul cu suport îmbunătățit pentru SVG."""
-    # Verifică dacă conținutul are SVG
     has_svg_markers = '[[DESEN_SVG]]' in content or '<svg' in content.lower()
     has_svg_elements = any(tag in content.lower() for tag in ['<path', '<rect', '<circle', '<line', '<polygon'])
     
     if has_svg_markers or (has_svg_elements and 'stroke=' in content):
-        # Extrage și repară SVG
         svg_code = None
         before_text = ""
         after_text = ""
@@ -604,17 +541,13 @@ def render_message_with_svg(content: str):
                 before_text = content[:svg_match.start()]
                 after_text = content[svg_match.end():]
             else:
-                # SVG incomplet - încearcă să-l repare
                 svg_start = content.lower().find('<svg')
                 if svg_start != -1:
                     before_text = content[:svg_start]
                     svg_code = content[svg_start:]
         
         if svg_code:
-            # Repară SVG-ul
             svg_code = repair_svg(svg_code)
-            
-            # Validează
             is_valid, error = validate_svg(svg_code)
             
             if is_valid:
@@ -632,7 +565,6 @@ def render_message_with_svg(content: str):
             else:
                 st.warning(f"⚠️ Desenul nu a putut fi afișat corect: {error}")
     
-    # Fallback: renderează ca text normal
     clean_content = content
     clean_content = re.sub(r'\[\[DESEN_SVG\]\]', '\n🎨 *Desen:*\n', clean_content)
     clean_content = re.sub(r'\[\[/DESEN_SVG\]\]', '\n', clean_content)
@@ -644,7 +576,6 @@ def render_message_with_svg(content: str):
 init_db()
 cleanup_old_sessions(CLEANUP_DAYS_OLD)
 
-# Session management
 session_id = get_or_create_session_id()
 st.session_state.session_id = session_id
 st.query_params["session_id"] = session_id
@@ -683,8 +614,8 @@ if "key_index" not in st.session_state:
     st.session_state.key_index = 0
 
 
-# === SYSTEM PROMPT ===
-SYSTEM_PROMPT = """
+# === SYSTEM PROMPT (RAW STRING PENTRU LATEX) ===
+SYSTEM_PROMPT = r"""
 ROL: Ești un profesor de liceu din România, universal (Mate, Fizică, Chimie, Literatură si Gramatica Romana, Franceza, Engleza, Geografie, Istorie, Informatica), bărbat, cu experiență în pregătirea pentru BAC.
     
     REGULI DE IDENTITATE (STRICT):
@@ -727,15 +658,15 @@ ROL: Ești un profesor de liceu din România, universal (Mate, Fizică, Chimie, 
        - Structurează răspunsurile ca un eseu de BAC (Ipoteză -> Argumente (pe text) -> Concluzie).
 
     4. STIL DE PREDARE:
-           - Explică simplu, cald și prietenos. Evită "limbajul de lemn".
-           - Folosește analogii pentru concepte grele (ex: "Curentul e ca debitul apei").
-           - La teorie: Definiție -> Exemplu Concret -> Aplicație.
-           - La probleme: Explică pașii logici ("Facem asta pentru că..."), nu da doar calculul.
+       - Explică simplu, cald și prietenos. Evită "limbajul de lemn".
+       - Folosește analogii pentru concepte grele (ex: "Curentul e ca debitul apei").
+       - La teorie: Definiție -> Exemplu Concret -> Aplicație.
+       - La probleme: Explică pașii logici ("Facem asta pentru că..."), nu da doar calculul.
 
     5. MATERIALE UPLOADATE (Cărți/PDF):
-           - Dacă primești o carte, păstrează sensul original în rezumate/traduceri.
-           - Dacă elevul încarcă o poză sau un PDF, analizează tot conținutul înainte de a răspunde.
-           - Păstrează sensul original al textelor din manuale.
+       - Dacă primești o carte, păstrează sensul original în rezumate/traduceri.
+       - Dacă elevul încarcă o poză sau un PDF, analizează tot conținutul înainte de a răspunde.
+       - Păstrează sensul original al textelor din manuale.
            
     6. FUNCȚIE SPECIALĂ - DESENARE (SVG):
         Dacă elevul cere un desen, o diagramă sau o hartă:
@@ -764,7 +695,6 @@ safety_settings = [
 
 
 def run_chat_with_rotation(history_obj, payload):
-    """Rulează chat cu rotație automată a cheilor API."""
     max_retries = len(keys) * 2
     for attempt in range(max_retries):
         try:
@@ -814,14 +744,17 @@ with st.sidebar:
     
     enable_audio = st.checkbox("🔊 Voce", value=False)
     
-    # Opțiune pentru alegerea vocii
     if enable_audio:
-        voice_option = st.radio(
-            "🎙️ Alege vocea:",
-            options=["👨 Domnul Profesor (Emil)", "👩 Doamna Profesoară (Alina)"],
-            index=0
-        )
-        selected_voice = VOICE_MALE_RO if "Emil" in voice_option else VOICE_FEMALE_RO
+        if EDGE_TTS_AVAILABLE:
+            voice_option = st.radio(
+                "🎙️ Alege vocea:",
+                options=["👨 Domnul Profesor (Emil)", "👩 Doamna Profesoară (Alina)"],
+                index=0
+            )
+            selected_voice = VOICE_MALE_RO if "Emil" in voice_option else VOICE_FEMALE_RO
+        else:
+            st.caption("ℹ️ Voce standard (gTTS)")
+            selected_voice = VOICE_MALE_RO
     else:
         selected_voice = VOICE_MALE_RO
     
@@ -856,19 +789,19 @@ with st.sidebar:
     
     st.divider()
     
-    # Debug info (opțional)
     if st.checkbox("🔧 Debug Info", value=False):
         msg_count = len(st.session_state.get("messages", []))
-        st.caption(f"📊 Mesaje în memorie: {msg_count}/{MAX_MESSAGES_IN_MEMORY}")
-        st.caption(f"🔑 Cheie API activă: {st.session_state.key_index + 1}/{len(keys)}")
+        st.caption(f"📊 Mesaje: {msg_count}/{MAX_MESSAGES_IN_MEMORY}")
+        st.caption(f"🔑 Cheie API: {st.session_state.key_index + 1}/{len(keys)}")
         st.caption(f"🆔 Sesiune: {st.session_state.session_id[:16]}...")
+        st.caption(f"🔊 Edge TTS: {'✅' if EDGE_TTS_AVAILABLE else '❌'}")
+        st.caption(f"🔊 gTTS: {'✅' if GTTS_AVAILABLE else '❌'}")
 
 
 # === ÎNCĂRCARE MESAJE ===
 if "messages" not in st.session_state or not st.session_state.messages:
     st.session_state.messages = load_history_from_db(st.session_state.session_id)
 
-# Afișare mesaje existente
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         if msg["role"] == "assistant":
@@ -879,26 +812,22 @@ for msg in st.session_state.messages:
 
 # === CHAT INPUT ===
 if user_input := st.chat_input("Întreabă profesorul..."):
-    # Afișează mesajul utilizatorului
     st.chat_message("user").write(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     save_message_with_limits(st.session_state.session_id, "user", user_input)
     
-    # Pregătește contextul pentru AI (cu limită)
     context_messages = get_context_for_ai(st.session_state.messages)
     history_obj = []
     for msg in context_messages:
         role_gemini = "model" if msg["role"] == "assistant" else "user"
         history_obj.append({"role": role_gemini, "parts": [msg["content"]]})
     
-    # Pregătește payload-ul
     final_payload = []
     if media_content:
         final_payload.append("Analizează materialul atașat:")
         final_payload.append(media_content)
     final_payload.append(user_input)
     
-    # Generează răspunsul
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
@@ -909,7 +838,6 @@ if user_input := st.chat_input("Întreabă profesorul..."):
             for text_chunk in stream_generator:
                 full_response += text_chunk
                 
-                # Afișare progresivă
                 if "<svg" in full_response or ("<path" in full_response and "stroke=" in full_response):
                     message_placeholder.markdown(
                         full_response.split("<path")[0] + "\n\n*🎨 Domnul Profesor desenează...*\n\n▌"
@@ -917,23 +845,20 @@ if user_input := st.chat_input("Întreabă profesorul..."):
                 else:
                     message_placeholder.markdown(full_response + "▌")
             
-            # Renderează răspunsul final
             message_placeholder.empty()
             render_message_with_svg(full_response)
             
-            # Salvează în istoric
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             save_message_with_limits(st.session_state.session_id, "assistant", full_response)
             
-            # Generează audio dacă e activat
-            if enable_audio:
+            if enable_audio and (EDGE_TTS_AVAILABLE or GTTS_AVAILABLE):
                 with st.spinner("🎙️ Domnul Profesor vorbește..."):
                     audio_file = generate_professor_voice(full_response, selected_voice)
                     
                     if audio_file:
                         st.audio(audio_file, format='audio/mp3')
                     else:
-                        st.caption("🔇 Nu am putut genera vocea pentru acest răspuns.")
+                        st.caption("🔇 Nu am putut genera vocea.")
                         
         except Exception as e:
             st.error(f"❌ Eroare: {e}")
