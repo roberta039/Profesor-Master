@@ -143,448 +143,448 @@ def trim_db_messages(session_id: str):
             c.execute("""
                 DELETE FROM history WHERE session_id = ? AND id IN (
                     SELECT id FROM
-					                    SELECT id FROM history WHERE session_id = ?
-					                    ORDER BY timestamp ASC LIMIT ?
-					                )
-					            """, (session_id, session_id, to_delete))
-					            conn.commit()
-					        conn.close()
-					    except Exception as e:
-					        print(f"Trim error: {e}")
+                    SELECT id FROM history WHERE session_id = ?
+                    ORDER BY timestamp ASC LIMIT ?
+                )
+            """, (session_id, session_id, to_delete))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Trim error: {e}")
 
 
-					def generate_unique_session_id() -> str:
-					    uuid_part = uuid.uuid4().hex[:16]
-					    time_part = hex(int(time.time() * 1000000))[2:][-8:]
-					    random_part = uuid.uuid4().hex[:8]
-					    return f"{uuid_part}{time_part}{random_part}"
+def generate_unique_session_id() -> str:
+    uuid_part = uuid.uuid4().hex[:16]
+    time_part = hex(int(time.time() * 1000000))[2:][-8:]
+    random_part = uuid.uuid4().hex[:8]
+    return f"{uuid_part}{time_part}{random_part}"
 
 
-					def session_exists_in_db(session_id: str) -> bool:
-					    try:
-					        conn = get_db_connection()
-					        c = conn.cursor()
-					        c.execute("SELECT 1 FROM sessions WHERE session_id = ? LIMIT 1", (session_id,))
-					        exists = c.fetchone() is not None
-					        conn.close()
-					        return exists
-					    except:
-					        return False
+def session_exists_in_db(session_id: str) -> bool:
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM sessions WHERE session_id = ? LIMIT 1", (session_id,))
+        exists = c.fetchone() is not None
+        conn.close()
+        return exists
+    except:
+        return False
 
 
-					def register_session(session_id: str):
-					    try:
-					        conn = get_db_connection()
-					        c = conn.cursor()
-					        c.execute("INSERT OR IGNORE INTO sessions (session_id, created_at, last_active) VALUES (?, ?, ?)",
-					                  (session_id, time.time(), time.time()))
-					        conn.commit()
-					        conn.close()
-					    except Exception as e:
-					        print(f"Register error: {e}")
+def register_session(session_id: str):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO sessions (session_id, created_at, last_active) VALUES (?, ?, ?)",
+                  (session_id, time.time(), time.time()))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Register error: {e}")
 
 
-					def update_session_activity(session_id: str):
-					    try:
-					        conn = get_db_connection()
-					        c = conn.cursor()
-					        c.execute("UPDATE sessions SET last_active = ? WHERE session_id = ?", (time.time(), session_id))
-					        conn.commit()
-					        conn.close()
-					    except:
-					        pass
+def update_session_activity(session_id: str):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("UPDATE sessions SET last_active = ? WHERE session_id = ?", (time.time(), session_id))
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 
-					def get_or_create_session_id() -> str:
-					    if "session_id" in st.query_params:
-					        existing = st.query_params["session_id"]
-					        if existing and len(existing) >= 16:
-					            return existing
+def get_or_create_session_id() -> str:
+    if "session_id" in st.query_params:
+        existing = st.query_params["session_id"]
+        if existing and len(existing) >= 16:
+            return existing
     
-					    if "session_id" in st.session_state:
-					        return st.session_state.session_id
+    if "session_id" in st.session_state:
+        return st.session_state.session_id
     
-					    for _ in range(10):
-					        new_id = generate_unique_session_id()
-					        if not session_exists_in_db(new_id):
-					            register_session(new_id)
-					            return new_id
+    for _ in range(10):
+        new_id = generate_unique_session_id()
+        if not session_exists_in_db(new_id):
+            register_session(new_id)
+            return new_id
     
-					    fallback = f"{uuid.uuid4().hex}{int(time.time())}"
-					    register_session(fallback)
-					    return fallback
+    fallback = f"{uuid.uuid4().hex}{int(time.time())}"
+    register_session(fallback)
+    return fallback
 
 
-					def trim_session_messages():
-					    if "messages" in st.session_state:
-					        if len(st.session_state.messages) > MAX_MESSAGES_IN_MEMORY:
-					            excess = len(st.session_state.messages) - MAX_MESSAGES_IN_MEMORY
-					            st.session_state.messages = st.session_state.messages[excess:]
-					            st.toast(f"📝 Am arhivat {excess} mesaje vechi.", icon="📦")
+def trim_session_messages():
+    if "messages" in st.session_state:
+        if len(st.session_state.messages) > MAX_MESSAGES_IN_MEMORY:
+            excess = len(st.session_state.messages) - MAX_MESSAGES_IN_MEMORY
+            st.session_state.messages = st.session_state.messages[excess:]
+            st.toast(f"📝 Am arhivat {excess} mesaje vechi.", icon="📦")
 
 
-					def get_context_for_ai(messages: list) -> list:
-					    if len(messages) <= MAX_MESSAGES_TO_SEND_TO_AI:
-					        return messages[:-1]
-					    first = messages[0] if messages else None
-					    recent = messages[-(MAX_MESSAGES_TO_SEND_TO_AI - 1):-1]
-					    if first and first not in recent:
-					        return [first] + recent
-					    return recent
+def get_context_for_ai(messages: list) -> list:
+    if len(messages) <= MAX_MESSAGES_TO_SEND_TO_AI:
+        return messages[:-1]
+    first = messages[0] if messages else None
+    recent = messages[-(MAX_MESSAGES_TO_SEND_TO_AI - 1):-1]
+    if first and first not in recent:
+        return [first] + recent
+    return recent
 
 
-					def save_message_with_limits(session_id: str, role: str, content: str):
-					    save_message_to_db(session_id, role, content)
-					    if len(st.session_state.get("messages", [])) % 10 == 0:
-					        trim_db_messages(session_id)
-					    trim_session_messages()
+def save_message_with_limits(session_id: str, role: str, content: str):
+    save_message_to_db(session_id, role, content)
+    if len(st.session_state.get("messages", [])) % 10 == 0:
+        trim_db_messages(session_id)
+    trim_session_messages()
 # === AUDIO FUNCTIONS ===
-						def clean_text_for_audio(text: str) -> str:
-						    if not text:
-						        return ""
+def clean_text_for_audio(text: str) -> str:
+    if not text:
+        return ""
     
-						    text = re.sub(r'\[\[DESEN_SVG\]\].*?\[\[/DESEN_SVG\]\]', ' Am desenat o figură. ', text, flags=re.DOTALL)
-						    text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
+    text = re.sub(r'\[\[DESEN_SVG\]\].*?\[\[/DESEN_SVG\]\]', ' Am desenat o figură. ', text, flags=re.DOTALL)
+    text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
     
-						    num = r'(\d+[.,]?\d*)'
+    num = r'(\d+[.,]?\d*)'
     
-						    # Rezistență - Ω (FIX: procesăm COMPLET)
-						    text = re.sub(num + r'\s*GΩ', r'\1 gigaohmi', text)
-						    text = re.sub(num + r'\s*MΩ', r'\1 megaohmi', text)
-						    text = re.sub(num + r'\s*kΩ', r'\1 kiloohmi', text)
-						    text = re.sub(num + r'\s*mΩ', r'\1 miliohmi', text)
-						    text = re.sub(num + r'\s*μΩ', r'\1 microohmi', text)
-						    text = re.sub(num + r'\s*µΩ', r'\1 microohmi', text)
-						    text = re.sub(num + r'\s*nΩ', r'\1 nanoohmi', text)
-						    text = re.sub(num + r'\s*Ω', r'\1 ohmi', text)
-						    # FIX FINAL: Ω rămas = ohmi
-						    text = re.sub(r'Ω', ' ohmi ', text)
+    # Rezistență - Ω (FIX: procesăm COMPLET)
+    text = re.sub(num + r'\s*GΩ', r'\1 gigaohmi', text)
+    text = re.sub(num + r'\s*MΩ', r'\1 megaohmi', text)
+    text = re.sub(num + r'\s*kΩ', r'\1 kiloohmi', text)
+    text = re.sub(num + r'\s*mΩ', r'\1 miliohmi', text)
+    text = re.sub(num + r'\s*μΩ', r'\1 microohmi', text)
+    text = re.sub(num + r'\s*µΩ', r'\1 microohmi', text)
+    text = re.sub(num + r'\s*nΩ', r'\1 nanoohmi', text)
+    text = re.sub(num + r'\s*Ω', r'\1 ohmi', text)
+    # FIX FINAL: Ω rămas = ohmi
+    text = re.sub(r'Ω', ' ohmi ', text)
     
-						    # Temperatură
-						    text = re.sub(num + r'\s*°C', r'\1 grade Celsius', text)
-						    text = re.sub(num + r'\s*°F', r'\1 grade Fahrenheit', text)
-						    text = re.sub(num + r'\s*°K', r'\1 Kelvin', text)
-						    text = re.sub(num + r'\s*K\b', r'\1 Kelvin', text)
-						    text = re.sub(num + r'\s*°', r'\1 grade', text)
+    # Temperatură
+    text = re.sub(num + r'\s*°C', r'\1 grade Celsius', text)
+    text = re.sub(num + r'\s*°F', r'\1 grade Fahrenheit', text)
+    text = re.sub(num + r'\s*°K', r'\1 Kelvin', text)
+    text = re.sub(num + r'\s*K\b', r'\1 Kelvin', text)
+    text = re.sub(num + r'\s*°', r'\1 grade', text)
     
-						    # Tensiune
-						    text = re.sub(num + r'\s*MV', r'\1 megavolți', text)
-						    text = re.sub(num + r'\s*kV', r'\1 kilovolți', text)
-						    text = re.sub(num + r'\s*mV', r'\1 milivolți', text)
-						    text = re.sub(num + r'\s*μV', r'\1 microvolți', text)
-						    text = re.sub(num + r'\s*V\b', r'\1 volți', text)
+    # Tensiune
+    text = re.sub(num + r'\s*MV', r'\1 megavolți', text)
+    text = re.sub(num + r'\s*kV', r'\1 kilovolți', text)
+    text = re.sub(num + r'\s*mV', r'\1 milivolți', text)
+    text = re.sub(num + r'\s*μV', r'\1 microvolți', text)
+    text = re.sub(num + r'\s*V\b', r'\1 volți', text)
     
-						    # Curent
-						    text = re.sub(num + r'\s*kA', r'\1 kiloamperi', text)
-						    text = re.sub(num + r'\s*mA', r'\1 miliamperi', text)
-						    text = re.sub(num + r'\s*μA', r'\1 microamperi', text)
-						    text = re.sub(num + r'\s*nA', r'\1 nanoamperi', text)
-						    text = re.sub(num + r'\s*A\b', r'\1 amperi', text)
+    # Curent
+    text = re.sub(num + r'\s*kA', r'\1 kiloamperi', text)
+    text = re.sub(num + r'\s*mA', r'\1 miliamperi', text)
+    text = re.sub(num + r'\s*μA', r'\1 microamperi', text)
+    text = re.sub(num + r'\s*nA', r'\1 nanoamperi', text)
+    text = re.sub(num + r'\s*A\b', r'\1 amperi', text)
     
-						    # Putere
-						    text = re.sub(num + r'\s*GW', r'\1 gigawați', text)
-						    text = re.sub(num + r'\s*MW', r'\1 megawați', text)
-						    text = re.sub(num + r'\s*kW', r'\1 kilowați', text)
-						    text = re.sub(num + r'\s*mW', r'\1 miliwați', text)
-						    text = re.sub(num + r'\s*μW', r'\1 microwați', text)
-						    text = re.sub(num + r'\s*W\b', r'\1 wați', text)
+    # Putere
+    text = re.sub(num + r'\s*GW', r'\1 gigawați', text)
+    text = re.sub(num + r'\s*MW', r'\1 megawați', text)
+    text = re.sub(num + r'\s*kW', r'\1 kilowați', text)
+    text = re.sub(num + r'\s*mW', r'\1 miliwați', text)
+    text = re.sub(num + r'\s*μW', r'\1 microwați', text)
+    text = re.sub(num + r'\s*W\b', r'\1 wați', text)
     
-						    # Frecvență
-						    text = re.sub(num + r'\s*THz', r'\1 terahertzi', text)
-						    text = re.sub(num + r'\s*GHz', r'\1 gigahertzi', text)
-						    text = re.sub(num + r'\s*MHz', r'\1 megahertzi', text)
-						    text = re.sub(num + r'\s*kHz', r'\1 kilohertzi', text)
-						    text = re.sub(num + r'\s*Hz', r'\1 hertzi', text)
+    # Frecvență
+    text = re.sub(num + r'\s*THz', r'\1 terahertzi', text)
+    text = re.sub(num + r'\s*GHz', r'\1 gigahertzi', text)
+    text = re.sub(num + r'\s*MHz', r'\1 megahertzi', text)
+    text = re.sub(num + r'\s*kHz', r'\1 kilohertzi', text)
+    text = re.sub(num + r'\s*Hz', r'\1 hertzi', text)
     
-						    # Capacitate
-						    text = re.sub(num + r'\s*μF', r'\1 microfarazi', text)
-						    text = re.sub(num + r'\s*nF', r'\1 nanofarazi', text)
-						    text = re.sub(num + r'\s*pF', r'\1 picofarazi', text)
-						    text = re.sub(num + r'\s*F\b', r'\1 farazi', text)
+    # Capacitate
+    text = re.sub(num + r'\s*μF', r'\1 microfarazi', text)
+    text = re.sub(num + r'\s*nF', r'\1 nanofarazi', text)
+    text = re.sub(num + r'\s*pF', r'\1 picofarazi', text)
+    text = re.sub(num + r'\s*F\b', r'\1 farazi', text)
     
-						    # Inductanță
-						    text = re.sub(num + r'\s*mH', r'\1 milihenry', text)
-						    text = re.sub(num + r'\s*μH', r'\1 microhenry', text)
-						    text = re.sub(num + r'\s*H\b', r'\1 henry', text)
+    # Inductanță
+    text = re.sub(num + r'\s*mH', r'\1 milihenry', text)
+    text = re.sub(num + r'\s*μH', r'\1 microhenry', text)
+    text = re.sub(num + r'\s*H\b', r'\1 henry', text)
     
-						    # Sarcină
-						    text = re.sub(num + r'\s*mC', r'\1 milicoulombi', text)
-						    text = re.sub(num + r'\s*μC', r'\1 microcoulombi', text)
-						    text = re.sub(num + r'\s*C\b', r'\1 coulombi', text)
+    # Sarcină
+    text = re.sub(num + r'\s*mC', r'\1 milicoulombi', text)
+    text = re.sub(num + r'\s*μC', r'\1 microcoulombi', text)
+    text = re.sub(num + r'\s*C\b', r'\1 coulombi', text)
     
-						    # Flux magnetic
-						    text = re.sub(num + r'\s*Wb', r'\1 weberi', text)
-						    text = re.sub(num + r'\s*T\b', r'\1 tesla', text)
+    # Flux magnetic
+    text = re.sub(num + r'\s*Wb', r'\1 weberi', text)
+    text = re.sub(num + r'\s*T\b', r'\1 tesla', text)
     
-						    # Forță
-						    text = re.sub(num + r'\s*kN', r'\1 kilonewtoni', text)
-						    text = re.sub(num + r'\s*N\b', r'\1 newtoni', text)
+    # Forță
+    text = re.sub(num + r'\s*kN', r'\1 kilonewtoni', text)
+    text = re.sub(num + r'\s*N\b', r'\1 newtoni', text)
     
-						    # Energie
-						    text = re.sub(num + r'\s*MJ', r'\1 megajouli', text)
-						    text = re.sub(num + r'\s*kJ', r'\1 kilojouli', text)
-						    text = re.sub(num + r'\s*J\b', r'\1 jouli', text)
+    # Energie
+    text = re.sub(num + r'\s*MJ', r'\1 megajouli', text)
+    text = re.sub(num + r'\s*kJ', r'\1 kilojouli', text)
+    text = re.sub(num + r'\s*J\b', r'\1 jouli', text)
     
-						    # Presiune
-						    text = re.sub(num + r'\s*MPa', r'\1 megapascali', text)
-						    text = re.sub(num + r'\s*kPa', r'\1 kilopascali', text)
-						    text = re.sub(num + r'\s*Pa', r'\1 pascali', text)
-						    text = re.sub(num + r'\s*atm', r'\1 atmosfere', text)
-						    text = re.sub(num + r'\s*bar', r'\1 bari', text)
+    # Presiune
+    text = re.sub(num + r'\s*MPa', r'\1 megapascali', text)
+    text = re.sub(num + r'\s*kPa', r'\1 kilopascali', text)
+    text = re.sub(num + r'\s*Pa', r'\1 pascali', text)
+    text = re.sub(num + r'\s*atm', r'\1 atmosfere', text)
+    text = re.sub(num + r'\s*bar', r'\1 bari', text)
     
-						    # Lungime
-						    text = re.sub(num + r'\s*km\b', r'\1 kilometri', text)
-						    text = re.sub(num + r'\s*cm\b', r'\1 centimetri', text)
-						    text = re.sub(num + r'\s*mm\b', r'\1 milimetri', text)
-						    text = re.sub(num + r'\s*μm', r'\1 micrometri', text)
-						    text = re.sub(num + r'\s*nm\b', r'\1 nanometri', text)
-						    text = re.sub(num + r'\s*m\b', r'\1 metri', text)
+    # Lungime
+    text = re.sub(num + r'\s*km\b', r'\1 kilometri', text)
+    text = re.sub(num + r'\s*cm\b', r'\1 centimetri', text)
+    text = re.sub(num + r'\s*mm\b', r'\1 milimetri', text)
+    text = re.sub(num + r'\s*μm', r'\1 micrometri', text)
+    text = re.sub(num + r'\s*nm\b', r'\1 nanometri', text)
+    text = re.sub(num + r'\s*m\b', r'\1 metri', text)
     
-						    # Masă
-						    text = re.sub(num + r'\s*kg\b', r'\1 kilograme', text)
-						    text = re.sub(num + r'\s*mg\b', r'\1 miligrame', text)
-						    text = re.sub(num + r'\s*g\b', r'\1 grame', text)
-						    text = re.sub(num + r'\s*t\b', r'\1 tone', text)
+    # Masă
+    text = re.sub(num + r'\s*kg\b', r'\1 kilograme', text)
+    text = re.sub(num + r'\s*mg\b', r'\1 miligrame', text)
+    text = re.sub(num + r'\s*g\b', r'\1 grame', text)
+    text = re.sub(num + r'\s*t\b', r'\1 tone', text)
     
-						    # Volum
-						    text = re.sub(num + r'\s*mL', r'\1 mililitri', text)
-						    text = re.sub(num + r'\s*L\b', r'\1 litri', text)
-						    text = re.sub(num + r'\s*m³', r'\1 metri cubi', text)
-						    text = re.sub(num + r'\s*cm³', r'\1 centimetri cubi', text)
+    # Volum
+    text = re.sub(num + r'\s*mL', r'\1 mililitri', text)
+    text = re.sub(num + r'\s*L\b', r'\1 litri', text)
+    text = re.sub(num + r'\s*m³', r'\1 metri cubi', text)
+    text = re.sub(num + r'\s*cm³', r'\1 centimetri cubi', text)
     
-						    # Timp
-						    text = re.sub(num + r'\s*ms\b', r'\1 milisecunde', text)
-						    text = re.sub(num + r'\s*μs', r'\1 microsecunde', text)
-						    text = re.sub(num + r'\s*min\b', r'\1 minute', text)
-						    text = re.sub(num + r'\s*s\b', r'\1 secunde', text)
-						    text = re.sub(num + r'\s*h\b', r'\1 ore', text)
+    # Timp
+    text = re.sub(num + r'\s*ms\b', r'\1 milisecunde', text)
+    text = re.sub(num + r'\s*μs', r'\1 microsecunde', text)
+    text = re.sub(num + r'\s*min\b', r'\1 minute', text)
+    text = re.sub(num + r'\s*s\b', r'\1 secunde', text)
+    text = re.sub(num + r'\s*h\b', r'\1 ore', text)
     
-						    # Suprafață
-						    text = re.sub(num + r'\s*km²', r'\1 kilometri pătrați', text)
-						    text = re.sub(num + r'\s*m²', r'\1 metri pătrați', text)
-						    text = re.sub(num + r'\s*cm²', r'\1 centimetri pătrați', text)
-						    text = re.sub(num + r'\s*ha\b', r'\1 hectare', text)
+    # Suprafață
+    text = re.sub(num + r'\s*km²', r'\1 kilometri pătrați', text)
+    text = re.sub(num + r'\s*m²', r'\1 metri pătrați', text)
+    text = re.sub(num + r'\s*cm²', r'\1 centimetri pătrați', text)
+    text = re.sub(num + r'\s*ha\b', r'\1 hectare', text)
     
-						    # Viteză
-						    text = re.sub(num + r'\s*m/s²', r'\1 metri pe secundă la pătrat', text)
-						    text = re.sub(num + r'\s*m/s\b', r'\1 metri pe secundă', text)
-						    text = re.sub(num + r'\s*km/h', r'\1 kilometri pe oră', text)
-						    text = re.sub(num + r'\s*rad/s', r'\1 radiani pe secundă', text)
+    # Viteză
+    text = re.sub(num + r'\s*m/s²', r'\1 metri pe secundă la pătrat', text)
+    text = re.sub(num + r'\s*m/s\b', r'\1 metri pe secundă', text)
+    text = re.sub(num + r'\s*km/h', r'\1 kilometri pe oră', text)
+    text = re.sub(num + r'\s*rad/s', r'\1 radiani pe secundă', text)
     
-						    # Densitate
-						    text = re.sub(num + r'\s*kg/m³', r'\1 kilograme pe metru cub', text)
-						    text = re.sub(num + r'\s*g/cm³', r'\1 grame pe centimetru cub', text)
+    # Densitate
+    text = re.sub(num + r'\s*kg/m³', r'\1 kilograme pe metru cub', text)
+    text = re.sub(num + r'\s*g/cm³', r'\1 grame pe centimetru cub', text)
     
-						    # Chimie
-						    text = re.sub(num + r'\s*mol\b', r'\1 moli', text)
-						    text = re.sub(num + r'\s*mol/L', r'\1 moli pe litru', text)
-						    text = re.sub(num + r'\s*g/mol', r'\1 grame pe mol', text)
+    # Chimie
+    text = re.sub(num + r'\s*mol\b', r'\1 moli', text)
+    text = re.sub(num + r'\s*mol/L', r'\1 moli pe litru', text)
+    text = re.sub(num + r'\s*g/mol', r'\1 grame pe mol', text)
     
-						    # Energie specială
-						    text = re.sub(num + r'\s*kWh', r'\1 kilowatt oră', text)
-						    text = re.sub(num + r'\s*eV', r'\1 electronvolți', text)
+    # Energie specială
+    text = re.sub(num + r'\s*kWh', r'\1 kilowatt oră', text)
+    text = re.sub(num + r'\s*eV', r'\1 electronvolți', text)
     
-						    # Indici cu underscore (P_r, V_0)
-						    text = re.sub(r'([A-Za-zα-ωΑ-Ω])\s*_\s*\{([^}]+)\}', r'\1 indice \2', text)
-						    text = re.sub(r'([A-Za-zα-ωΑ-Ω])\s*_\s*([A-Za-z0-9α-ωΑ-Ω]+)', r'\1 indice \2', text)
+    # Indici cu underscore (P_r, V_0)
+    text = re.sub(r'([A-Za-zα-ωΑ-Ω])\s*_\s*\{([^}]+)\}', r'\1 indice \2', text)
+    text = re.sub(r'([A-Za-zα-ωΑ-Ω])\s*_\s*([A-Za-z0-9α-ωΑ-Ω]+)', r'\1 indice \2', text)
     
-						    # Combinații speciale
-						    special = {
-						        '>=': ' mai mare sau egal cu ',
-						        '<=': ' mai mic sau egal cu ',
-						        '!=': ' diferit de ',
-						        '==': ' egal cu ',
-						        '>>': ' mult mai mare decât ',
-						        '<<': ' mult mai mic decât ',
-						        '->': ' implică ',
-						        '=>': ' rezultă că ',
-						        '...': ' ',
-						        'N·m': ' newton metri ',
-						    }
-						    for combo, repl in special.items():
-						        text = text.replace(combo, repl)
+    # Combinații speciale
+    special = {
+        '>=': ' mai mare sau egal cu ',
+        '<=': ' mai mic sau egal cu ',
+        '!=': ' diferit de ',
+        '==': ' egal cu ',
+        '>>': ' mult mai mare decât ',
+        '<<': ' mult mai mic decât ',
+        '->': ' implică ',
+        '=>': ' rezultă că ',
+        '...': ' ',
+        'N·m': ' newton metri ',
+    }
+    for combo, repl in special.items():
+        text = text.replace(combo, repl)
     
-						    # Caractere grecești și simboluri
-						    greek = {
-						        'α': ' alfa ', 'β': ' beta ', 'γ': ' gama ', 'δ': ' delta ',
-						        'ε': ' epsilon ', 'ζ': ' zeta ', 'η': ' eta ', 'θ': ' teta ',
-						        'ι': ' iota ', 'κ': ' kapa ', 'λ': ' lambda ', 'μ': ' miu ',
-						        'ν': ' niu ', 'ξ': ' csi ', 'ο': ' omicron ', 'π': ' pi ',
-						        'ρ': ' ro ', 'σ': ' sigma ', 'ς': ' sigma ', 'τ': ' tau ',
-						        'υ': ' ipsilon ', 'φ': ' fi ', 'χ': ' hi ', 'ψ': ' psi ',
-						        'ω': ' omega ',
-						        'Α': ' alfa ', 'Β': ' beta ', 'Γ': ' gama ', 'Δ': ' delta ',
-						        'Ε': ' epsilon ', 'Ζ': ' zeta ', 'Η': ' eta ', 'Θ': ' teta ',
-						        'Ι': ' iota ', 'Κ': ' kapa ', 'Λ': ' lambda ', 'Μ': ' miu ',
-						        'Ν': ' niu ', 'Ξ': ' csi ', 'Ο': ' omicron ', 'Π': ' pi ',
-						        'Ρ': ' ro ', 'Σ': ' sigma ', 'Τ': ' tau ', 'Υ': ' ipsilon ',
-						        'Φ': ' fi ', 'Χ': ' hi ', 'Ψ': ' psi ',
-						        # Ω ȘTERS - procesat ca ohmi mai sus
-						        'ₐ': ' indice a ', 'ₑ': ' indice e ', 'ᵢ': ' indice i ',
-						        'ₒ': ' indice o ', 'ₚ': ' indice p ', 'ᵣ': ' indice r ',
-						        'ₛ': ' indice s ', 'ₜ': ' indice t ', 'ᵤ': ' indice u ',
-						        'ᵥ': ' indice v ', 'ₓ': ' indice x ', 'ₙ': ' indice n ',
-						        '⁰': ' la puterea 0 ', '¹': ' la puterea 1 ', '²': ' la pătrat ',
-						        '³': ' la cub ', '⁴': ' la puterea 4 ', 'ⁿ': ' la puterea n ',
-						        '₀': ' indice 0 ', '₁': ' indice 1 ', '₂': ' indice 2 ',
-						        '₃': ' indice 3 ', '₄': ' indice 4 ', '₅': ' indice 5 ',
-						        '∞': ' infinit ', '∑': ' suma ', '∫': ' integrala ', '∂': ' derivata parțială ',
-						        '√': ' radical din ', '±': ' plus minus ', '×': ' ori ', '÷': ' împărțit la ',
-						        '≠': ' diferit de ', '≈': ' aproximativ egal cu ', '≡': ' identic cu ',
-						        '≤': ' mai mic sau egal cu ', '≥': ' mai mare sau egal cu ',
-						        '∈': ' aparține lui ', '∉': ' nu aparține lui ', '⊂': ' inclus în ',
-						        '∪': ' reunit cu ', '∩': ' intersectat cu ', '∅': ' mulțimea vidă ',
-						        '∀': ' pentru orice ', '∃': ' există ', '→': ' implică ',
-						        '⇒': ' rezultă că ', '↔': ' echivalent cu ',
-						        '>': ' mai mare decât ', '<': ' mai mic decât ', '=': ' egal ',
-						        '+': ' plus ', '−': ' minus ', '·': ' ori ',
-						        '½': ' o doime ', '⅓': ' o treime ', '¼': ' un sfert ', '¾': ' trei sferturi ',
-						        '%': ' procent ', '°': ' grade ',
-						        'ℕ': ' mulțimea numerelor naturale ', 'ℤ': ' mulțimea numerelor întregi ',
-						        'ℚ': ' mulțimea numerelor raționale ', 'ℝ': ' mulțimea numerelor reale ',
-						        'ℂ': ' mulțimea numerelor complexe ',
-						    }
-						    for symbol, pronun in greek.items():
-						        text = text.replace(symbol, pronun)
+    # Caractere grecești și simboluri
+    greek = {
+        'α': ' alfa ', 'β': ' beta ', 'γ': ' gama ', 'δ': ' delta ',
+        'ε': ' epsilon ', 'ζ': ' zeta ', 'η': ' eta ', 'θ': ' teta ',
+        'ι': ' iota ', 'κ': ' kapa ', 'λ': ' lambda ', 'μ': ' miu ',
+        'ν': ' niu ', 'ξ': ' csi ', 'ο': ' omicron ', 'π': ' pi ',
+        'ρ': ' ro ', 'σ': ' sigma ', 'ς': ' sigma ', 'τ': ' tau ',
+        'υ': ' ipsilon ', 'φ': ' fi ', 'χ': ' hi ', 'ψ': ' psi ',
+        'ω': ' omega ',
+        'Α': ' alfa ', 'Β': ' beta ', 'Γ': ' gama ', 'Δ': ' delta ',
+        'Ε': ' epsilon ', 'Ζ': ' zeta ', 'Η': ' eta ', 'Θ': ' teta ',
+        'Ι': ' iota ', 'Κ': ' kapa ', 'Λ': ' lambda ', 'Μ': ' miu ',
+        'Ν': ' niu ', 'Ξ': ' csi ', 'Ο': ' omicron ', 'Π': ' pi ',
+        'Ρ': ' ro ', 'Σ': ' sigma ', 'Τ': ' tau ', 'Υ': ' ipsilon ',
+        'Φ': ' fi ', 'Χ': ' hi ', 'Ψ': ' psi ',
+        # Ω ȘTERS - procesat ca ohmi mai sus
+        'ₐ': ' indice a ', 'ₑ': ' indice e ', 'ᵢ': ' indice i ',
+        'ₒ': ' indice o ', 'ₚ': ' indice p ', 'ᵣ': ' indice r ',
+        'ₛ': ' indice s ', 'ₜ': ' indice t ', 'ᵤ': ' indice u ',
+        'ᵥ': ' indice v ', 'ₓ': ' indice x ', 'ₙ': ' indice n ',
+        '⁰': ' la puterea 0 ', '¹': ' la puterea 1 ', '²': ' la pătrat ',
+        '³': ' la cub ', '⁴': ' la puterea 4 ', 'ⁿ': ' la puterea n ',
+        '₀': ' indice 0 ', '₁': ' indice 1 ', '₂': ' indice 2 ',
+        '₃': ' indice 3 ', '₄': ' indice 4 ', '₅': ' indice 5 ',
+        '∞': ' infinit ', '∑': ' suma ', '∫': ' integrala ', '∂': ' derivata parțială ',
+        '√': ' radical din ', '±': ' plus minus ', '×': ' ori ', '÷': ' împărțit la ',
+        '≠': ' diferit de ', '≈': ' aproximativ egal cu ', '≡': ' identic cu ',
+        '≤': ' mai mic sau egal cu ', '≥': ' mai mare sau egal cu ',
+        '∈': ' aparține lui ', '∉': ' nu aparține lui ', '⊂': ' inclus în ',
+        '∪': ' reunit cu ', '∩': ' intersectat cu ', '∅': ' mulțimea vidă ',
+        '∀': ' pentru orice ', '∃': ' există ', '→': ' implică ',
+        '⇒': ' rezultă că ', '↔': ' echivalent cu ',
+        '>': ' mai mare decât ', '<': ' mai mic decât ', '=': ' egal ',
+        '+': ' plus ', '−': ' minus ', '·': ' ori ',
+        '½': ' o doime ', '⅓': ' o treime ', '¼': ' un sfert ', '¾': ' trei sferturi ',
+        '%': ' procent ', '°': ' grade ',
+        'ℕ': ' mulțimea numerelor naturale ', 'ℤ': ' mulțimea numerelor întregi ',
+        'ℚ': ' mulțimea numerelor raționale ', 'ℝ': ' mulțimea numerelor reale ',
+        'ℂ': ' mulțimea numerelor complexe ',
+    }
+    for symbol, pronun in greek.items():
+        text = text.replace(symbol, pronun)
     
-						    # Punctuație specială
-						    text = re.sub(r'(\d)\s*:\s*(\d)', r'\1 este la \2', text)
-						    text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1 supra \2', text)
-						    text = re.sub(r'(\w):\s+', r'\1. ', text)
+    # Punctuație specială
+    text = re.sub(r'(\d)\s*:\s*(\d)', r'\1 este la \2', text)
+    text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1 supra \2', text)
+    text = re.sub(r'(\w):\s+', r'\1. ', text)
     
-						    # LaTeX
-						    latex = {
-						        r'\\sqrt\{([^}]+)\}': r' radical din \1 ',
-						        r'\\frac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
-						        r'\^(\d+)': r' la puterea \1 ',
-						        r'\^\{([^}]+)\}': r' la puterea \1 ',
-						        r'_(\d+)': r' indice \1 ',
-						        r'_\{([^}]+)\}': r' indice \1 ',
-						        r'\\alpha': ' alfa ', r'\\beta': ' beta ', r'\\gamma': ' gama ',
-						        r'\\delta': ' delta ', r'\\epsilon': ' epsilon ', r'\\eta': ' eta ',
-						        r'\\theta': ' teta ', r'\\lambda': ' lambda ', r'\\mu': ' miu ',
-						        r'\\pi': ' pi ', r'\\rho': ' ro ', r'\\sigma': ' sigma ',
-						        r'\\tau': ' tau ', r'\\phi': ' fi ', r'\\omega': ' omega ',
-						        r'\\times': ' ori ', r'\\cdot': ' ori ', r'\\pm': ' plus minus ',
-						        r'\\leq': ' mai mic sau egal cu ', r'\\geq': ' mai mare sau egal cu ',
-						        r'\\neq': ' diferit de ', r'\\approx': ' aproximativ egal cu ',
-						        r'\\infty': ' infinit ', r'\\sum': ' suma ', r'\\int': ' integrala ',
-						        r'\\lim': ' limita ', r'\\sin': ' sinus de ', r'\\cos': ' cosinus de ',
-						        r'\\tan': ' tangentă de ', r'\\in': ' aparține lui ',
-						    }
-						    for pattern, repl in latex.items():
-						        text = re.sub(pattern, repl, text)
+    # LaTeX
+    latex = {
+        r'\\sqrt\{([^}]+)\}': r' radical din \1 ',
+        r'\\frac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
+        r'\^(\d+)': r' la puterea \1 ',
+        r'\^\{([^}]+)\}': r' la puterea \1 ',
+        r'_(\d+)': r' indice \1 ',
+        r'_\{([^}]+)\}': r' indice \1 ',
+        r'\\alpha': ' alfa ', r'\\beta': ' beta ', r'\\gamma': ' gama ',
+        r'\\delta': ' delta ', r'\\epsilon': ' epsilon ', r'\\eta': ' eta ',
+        r'\\theta': ' teta ', r'\\lambda': ' lambda ', r'\\mu': ' miu ',
+        r'\\pi': ' pi ', r'\\rho': ' ro ', r'\\sigma': ' sigma ',
+        r'\\tau': ' tau ', r'\\phi': ' fi ', r'\\omega': ' omega ',
+        r'\\times': ' ori ', r'\\cdot': ' ori ', r'\\pm': ' plus minus ',
+        r'\\leq': ' mai mic sau egal cu ', r'\\geq': ' mai mare sau egal cu ',
+        r'\\neq': ' diferit de ', r'\\approx': ' aproximativ egal cu ',
+        r'\\infty': ' infinit ', r'\\sum': ' suma ', r'\\int': ' integrala ',
+        r'\\lim': ' limita ', r'\\sin': ' sinus de ', r'\\cos': ' cosinus de ',
+        r'\\tan': ' tangentă de ', r'\\in': ' aparține lui ',
+    }
+    for pattern, repl in latex.items():
+        text = re.sub(pattern, repl, text)
     
-						    # Curățare finală
-						    text = re.sub(r'\$\$?([^$]+)\$\$?', r' \1 ', text)
-						    text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
-						    text = re.sub(r'\\[a-zA-Z]+', '', text)
-						    text = re.sub(r'[{}\\]', '', text)
-						    text = re.sub(r'\*+([^*]+)\*+', r'\1', text)
-						    text = re.sub(r'`[^`]+`', '', text)
-						    text = re.sub(r'<[^>]+>', '', text)
-						    text = re.sub(r'[│▌►◄■▪▫\[\](){}]', ' ', text)
-						    text = re.sub(r'\s*:\s*', '. ', text)
-						    text = re.sub(r'\s+', ' ', text)
+    # Curățare finală
+    text = re.sub(r'\$\$?([^$]+)\$\$?', r' \1 ', text)
+    text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
+    text = re.sub(r'\\[a-zA-Z]+', '', text)
+    text = re.sub(r'[{}\\]', '', text)
+    text = re.sub(r'\*+([^*]+)\*+', r'\1', text)
+    text = re.sub(r'`[^`]+`', '', text)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'[│▌►◄■▪▫\[\](){}]', ' ', text)
+    text = re.sub(r'\s*:\s*', '. ', text)
+    text = re.sub(r'\s+', ' ', text)
     
-						    text = text.strip()
-						    if len(text) > 3000:
-						        text = text[:3000]
-						        last = max(text.rfind('.'), text.rfind('!'), text.rfind('?'))
-						        if last > 2500:
-						            text = text[:last + 1]
+    text = text.strip()
+    if len(text) > 3000:
+        text = text[:3000]
+        last = max(text.rfind('.'), text.rfind('!'), text.rfind('?'))
+        if last > 2500:
+            text = text[:last + 1]
     
-						    return text
+    return text
 
 
-						async def _generate_audio_edge_tts(text: str, voice: str = VOICE_MALE_RO):
-						    try:
-						        clean = clean_text_for_audio(text)
-						        if not clean or len(clean) < 10:
-						            return None
+async def _generate_audio_edge_tts(text: str, voice: str = VOICE_MALE_RO):
+    try:
+        clean = clean_text_for_audio(text)
+        if not clean or len(clean) < 10:
+            return None
         
-						        comm = edge_tts.Communicate(clean, voice)
-						        data = BytesIO()
-						        async for chunk in comm.stream():
-						            if chunk["type"] == "audio":
-						                data.write(chunk["data"])
-						        data.seek(0)
-						        return data.getvalue()
-						    except Exception as e:
-						        print(f"Edge TTS error: {e}")
-						        return None
+        comm = edge_tts.Communicate(clean, voice)
+        data = BytesIO()
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio":
+                data.write(chunk["data"])
+        data.seek(0)
+        return data.getvalue()
+    except Exception as e:
+        print(f"Edge TTS error: {e}")
+        return None
 
 
-						def generate_professor_voice(text: str, voice: str = VOICE_MALE_RO):
-						    try:
-						        loop = asyncio.new_event_loop()
-						        asyncio.set_event_loop(loop)
-						        try:
-						            audio_bytes = loop.run_until_complete(_generate_audio_edge_tts(text, voice))
-						        finally:
-						            loop.close()
+def generate_professor_voice(text: str, voice: str = VOICE_MALE_RO):
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            audio_bytes = loop.run_until_complete(_generate_audio_edge_tts(text, voice))
+        finally:
+            loop.close()
         
-						        if audio_bytes:
-						            result = BytesIO(audio_bytes)
-						            result.seek(0)
-						            return result
-						        return None
-						    except Exception as e:
-						        print(f"Voice error: {e}")
-						        return None
+        if audio_bytes:
+            result = BytesIO(audio_bytes)
+            result.seek(0)
+            return result
+        return None
+    except Exception as e:
+        print(f"Voice error: {e}")
+        return None
 
 
-						def repair_svg(svg: str) -> str:
-						    if not svg:
-						        return None
-						    svg = svg.strip()
+def repair_svg(svg: str) -> str:
+    if not svg:
+        return None
+    svg = svg.strip()
     
-						    has_open = '<svg' in svg.lower()
-						    has_close = '</svg>' in svg.lower()
+    has_open = '<svg' in svg.lower()
+    has_close = '</svg>' in svg.lower()
     
-						    if not has_open:
-						        svg = f'<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">{svg}</svg>'
-						    elif not has_close:
-						        svg += '</svg>'
+    if not has_open:
+        svg = f'<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">{svg}</svg>'
+    elif not has_close:
+        svg += '</svg>'
     
-						    if 'xmlns=' not in svg:
-						        svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"', 1)
+    if 'xmlns=' not in svg:
+        svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"', 1)
     
-						    return svg
+    return svg
 
 
-						def render_message_with_svg(content: str):
-						    has_svg = '[[DESEN_SVG]]' in content or '<svg' in content.lower()
-						    has_elem = any(t in content.lower() for t in ['<path', '<rect', '<circle'])
+def render_message_with_svg(content: str):
+    has_svg = '[[DESEN_SVG]]' in content or '<svg' in content.lower()
+    has_elem = any(t in content.lower() for t in ['<path', '<rect', '<circle'])
     
-						    if has_svg or (has_elem and 'stroke=' in content):
-						        svg_code = None
-						        before = after = ""
+    if has_svg or (has_elem and 'stroke=' in content):
+        svg_code = None
+        before = after = ""
         
-						        if '[[DESEN_SVG]]' in content:
-						            parts = content.split('[[DESEN_SVG]]')
-						            before = parts[0]
-						            if '[[/DESEN_SVG]]' in parts[1]:
-						                inner = parts[1].split('[[/DESEN_SVG]]')
-						                svg_code = inner[0]
-						                after = inner[1] if len(inner) > 1 else ""
-						        elif '<svg' in content.lower():
-						            match = re.search(r'<svg.*?</svg>', content, re.DOTALL | re.IGNORECASE)
-						            if match:
-						                svg_code = match.group(0)
-						                before = content[:match.start()]
-						                after = content[match.end():]
+        if '[[DESEN_SVG]]' in content:
+            parts = content.split('[[DESEN_SVG]]')
+            before = parts[0]
+            if '[[/DESEN_SVG]]' in parts[1]:
+                inner = parts[1].split('[[/DESEN_SVG]]')
+                svg_code = inner[0]
+                after = inner[1] if len(inner) > 1 else ""
+        elif '<svg' in content.lower():
+            match = re.search(r'<svg.*?</svg>', content, re.DOTALL | re.IGNORECASE)
+            if match:
+                svg_code = match.group(0)
+                before = content[:match.start()]
+                after = content[match.end():]
         
-						        if svg_code:
-						            svg_code = repair_svg(svg_code)
-						            if before.strip():
-						                st.markdown(before.strip())
-						            st.markdown(f'<div class="svg-container">{svg_code}</div>', unsafe_allow_html=True)
-						            if after.strip():
-						                st.markdown(after.strip())
-						            return
+        if svg_code:
+            svg_code = repair_svg(svg_code)
+            if before.strip():
+                st.markdown(before.strip())
+            st.markdown(f'<div class="svg-container">{svg_code}</div>', unsafe_allow_html=True)
+            if after.strip():
+                st.markdown(after.strip())
+            return
     
-						    st.markdown(content)
+    st.markdown(content)
 # === INIT ===
 init_db()
 cleanup_old_sessions(CLEANUP_DAYS_OLD)
