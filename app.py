@@ -314,9 +314,132 @@ def clean_text_for_audio(text: str) -> str:
                   ' Am desenat o figură pentru tine. ', text, flags=re.DOTALL)
     text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
     
-    # 2. ÎNLOCUIRI SPECIALE PENTRU COMBINAȚII (ÎNAINTE de caractere individuale)
+    # 2. UNITĂȚI DE MĂSURĂ CU CONTEXT (trebuie procesate PRIMELE!)
+    # Ω după număr = ohmi, altfel omega
+    text = re.sub(r'(\d+)\s*Ω', r'\1 ohmi', text)
+    text = re.sub(r'(\d+)\s*kΩ', r'\1 kiloohmi', text)
+    text = re.sub(r'(\d+)\s*MΩ', r'\1 megaohmi', text)
+    text = re.sub(r'(\d+)\s*mΩ', r'\1 miliohmi', text)
+    text = re.sub(r'(\d+)\s*μΩ', r'\1 microohmi', text)
+    
+    # Alte unități fizice cu simboluri speciale
+    text = re.sub(r'(\d+)\s*°C', r'\1 grade Celsius', text)
+    text = re.sub(r'(\d+)\s*°F', r'\1 grade Fahrenheit', text)
+    text = re.sub(r'(\d+)\s*°K', r'\1 Kelvin', text)
+    text = re.sub(r'(\d+)\s*K\b', r'\1 Kelvin', text)
+    text = re.sub(r'(\d+)\s*°', r'\1 grade', text)
+    
+    # Unități electrice
+    text = re.sub(r'(\d+)\s*V\b', r'\1 volți', text)
+    text = re.sub(r'(\d+)\s*kV', r'\1 kilovolți', text)
+    text = re.sub(r'(\d+)\s*mV', r'\1 milivolți', text)
+    text = re.sub(r'(\d+)\s*A\b', r'\1 amperi', text)
+    text = re.sub(r'(\d+)\s*mA', r'\1 miliamperi', text)
+    text = re.sub(r'(\d+)\s*μA', r'\1 microamperi', text)
+    text = re.sub(r'(\d+)\s*W\b', r'\1 wați', text)
+    text = re.sub(r'(\d+)\s*kW', r'\1 kilowați', text)
+    text = re.sub(r'(\d+)\s*MW', r'\1 megawați', text)
+    text = re.sub(r'(\d+)\s*mW', r'\1 miliwați', text)
+    text = re.sub(r'(\d+)\s*Hz', r'\1 hertzi', text)
+    text = re.sub(r'(\d+)\s*kHz', r'\1 kilohertzi', text)
+    text = re.sub(r'(\d+)\s*MHz', r'\1 megahertzi', text)
+    text = re.sub(r'(\d+)\s*GHz', r'\1 gigahertzi', text)
+    text = re.sub(r'(\d+)\s*F\b', r'\1 farazi', text)
+    text = re.sub(r'(\d+)\s*μF', r'\1 microfarazi', text)
+    text = re.sub(r'(\d+)\s*nF', r'\1 nanofarazi', text)
+    text = re.sub(r'(\d+)\s*pF', r'\1 picofarazi', text)
+    text = re.sub(r'(\d+)\s*H\b', r'\1 henry', text)
+    text = re.sub(r'(\d+)\s*mH', r'\1 milihenry', text)
+    text = re.sub(r'(\d+)\s*μH', r'\1 microhenry', text)
+    text = re.sub(r'(\d+)\s*C\b', r'\1 coulombi', text)
+    text = re.sub(r'(\d+)\s*Wb', r'\1 weberi', text)
+    text = re.sub(r'(\d+)\s*T\b', r'\1 tesla', text)
+    
+    # Unități mecanice
+    text = re.sub(r'(\d+)\s*N\b', r'\1 newtoni', text)
+    text = re.sub(r'(\d+)\s*kN', r'\1 kilonewtoni', text)
+    text = re.sub(r'(\d+)\s*J\b', r'\1 jouli', text)
+    text = re.sub(r'(\d+)\s*kJ', r'\1 kilojouli', text)
+    text = re.sub(r'(\d+)\s*MJ', r'\1 megajouli', text)
+    text = re.sub(r'(\d+)\s*Pa', r'\1 pascali', text)
+    text = re.sub(r'(\d+)\s*kPa', r'\1 kilopascali', text)
+    text = re.sub(r'(\d+)\s*MPa', r'\1 megapascali', text)
+    text = re.sub(r'(\d+)\s*hPa', r'\1 hectopascali', text)
+    text = re.sub(r'(\d+)\s*atm', r'\1 atmosfere', text)
+    text = re.sub(r'(\d+)\s*bar', r'\1 bari', text)
+    
+    # Unități de lungime
+    text = re.sub(r'(\d+)\s*km\b', r'\1 kilometri', text)
+    text = re.sub(r'(\d+)\s*m\b', r'\1 metri', text)
+    text = re.sub(r'(\d+)\s*cm\b', r'\1 centimetri', text)
+    text = re.sub(r'(\d+)\s*mm\b', r'\1 milimetri', text)
+    text = re.sub(r'(\d+)\s*μm', r'\1 micrometri', text)
+    text = re.sub(r'(\d+)\s*nm', r'\1 nanometri', text)
+    text = re.sub(r'(\d+)\s*pm', r'\1 picometri', text)
+    text = re.sub(r'(\d+)\s*Å', r'\1 angstromi', text)
+    
+    # Unități de masă
+    text = re.sub(r'(\d+)\s*kg\b', r'\1 kilograme', text)
+    text = re.sub(r'(\d+)\s*g\b', r'\1 grame', text)
+    text = re.sub(r'(\d+)\s*mg\b', r'\1 miligrame', text)
+    text = re.sub(r'(\d+)\s*μg', r'\1 micrograme', text)
+    text = re.sub(r'(\d+)\s*t\b', r'\1 tone', text)
+    
+    # Unități de volum
+    text = re.sub(r'(\d+)\s*L\b', r'\1 litri', text)
+    text = re.sub(r'(\d+)\s*l\b', r'\1 litri', text)
+    text = re.sub(r'(\d+)\s*mL', r'\1 mililitri', text)
+    text = re.sub(r'(\d+)\s*ml', r'\1 mililitri', text)
+    text = re.sub(r'(\d+)\s*m³', r'\1 metri cubi', text)
+    text = re.sub(r'(\d+)\s*cm³', r'\1 centimetri cubi', text)
+    text = re.sub(r'(\d+)\s*dm³', r'\1 decimetri cubi', text)
+    
+    # Unități de timp
+    text = re.sub(r'(\d+)\s*s\b', r'\1 secunde', text)
+    text = re.sub(r'(\d+)\s*ms\b', r'\1 milisecunde', text)
+    text = re.sub(r'(\d+)\s*μs', r'\1 microsecunde', text)
+    text = re.sub(r'(\d+)\s*ns', r'\1 nanosecunde', text)
+    text = re.sub(r'(\d+)\s*min\b', r'\1 minute', text)
+    text = re.sub(r'(\d+)\s*h\b', r'\1 ore', text)
+    
+    # Unități de suprafață
+    text = re.sub(r'(\d+)\s*m²', r'\1 metri pătrați', text)
+    text = re.sub(r'(\d+)\s*cm²', r'\1 centimetri pătrați', text)
+    text = re.sub(r'(\d+)\s*km²', r'\1 kilometri pătrați', text)
+    text = re.sub(r'(\d+)\s*ha\b', r'\1 hectare', text)
+    
+    # Unități compuse comune (viteză, accelerație, etc.)
+    text = re.sub(r'(\d+)\s*m/s²', r'\1 metri pe secundă la pătrat', text)
+    text = re.sub(r'(\d+)\s*m/s\b', r'\1 metri pe secundă', text)
+    text = re.sub(r'(\d+)\s*km/h', r'\1 kilometri pe oră', text)
+    text = re.sub(r'(\d+)\s*km/s', r'\1 kilometri pe secundă', text)
+    text = re.sub(r'(\d+)\s*rad/s', r'\1 radiani pe secundă', text)
+    text = re.sub(r'(\d+)\s*rpm', r'\1 rotații pe minut', text)
+    text = re.sub(r'(\d+)\s*kg/m³', r'\1 kilograme pe metru cub', text)
+    text = re.sub(r'(\d+)\s*g/cm³', r'\1 grame pe centimetru cub', text)
+    text = re.sub(r'(\d+)\s*N/m²', r'\1 newtoni pe metru pătrat', text)
+    text = re.sub(r'(\d+)\s*J/kg', r'\1 jouli pe kilogram', text)
+    text = re.sub(r'(\d+)\s*W/m²', r'\1 wați pe metru pătrat', text)
+    text = re.sub(r'(\d+)\s*mol/L', r'\1 moli pe litru', text)
+    text = re.sub(r'(\d+)\s*g/mol', r'\1 grame pe mol', text)
+    
+    # Unități chimie
+    text = re.sub(r'(\d+)\s*mol\b', r'\1 moli', text)
+    text = re.sub(r'(\d+)\s*M\b', r'\1 molar', text)  # concentrație molară
+    
+    # Unități optică/radiație
+    text = re.sub(r'(\d+)\s*cd\b', r'\1 candele', text)
+    text = re.sub(r'(\d+)\s*lm\b', r'\1 lumeni', text)
+    text = re.sub(r'(\d+)\s*lx\b', r'\1 lucși', text)
+    text = re.sub(r'(\d+)\s*Bq\b', r'\1 becquereli', text)
+    text = re.sub(r'(\d+)\s*Gy\b', r'\1 gray', text)
+    text = re.sub(r'(\d+)\s*Sv\b', r'\1 sievert', text)
+    text = re.sub(r'(\d+)\s*eV\b', r'\1 electronvolți', text)
+    text = re.sub(r'(\d+)\s*keV', r'\1 kiloelectronvolți', text)
+    text = re.sub(r'(\d+)\s*MeV', r'\1 megaelectronvolți', text)
+    
+    # 3. ÎNLOCUIRI SPECIALE PENTRU COMBINAȚII
     special_combinations = {
-        # Comparații și operatori compuși
         '>=': ' mai mare sau egal cu ',
         '<=': ' mai mic sau egal cu ',
         '!=': ' diferit de ',
@@ -328,42 +451,19 @@ def clean_text_for_audio(text: str) -> str:
         '<-': ' provine din ',
         '<->': ' echivalent cu ',
         '=>': ' rezultă că ',
-        '...': ' și așa mai departe ',
-        
-        # Unități de măsură compuse
-        'm/s²': ' metri pe secundă la pătrat ',
-        'm/s^2': ' metri pe secundă la pătrat ',
-        'm/s': ' metri pe secundă ',
-        'km/h': ' kilometri pe oră ',
-        'km/s': ' kilometri pe secundă ',
-        'kg/m³': ' kilograme pe metru cub ',
-        'kg/m^3': ' kilograme pe metru cub ',
-        'g/cm³': ' grame pe centimetru cub ',
-        'g/cm^3': ' grame pe centimetru cub ',
-        'N/m²': ' newtoni pe metru pătrat ',
-        'N/m^2': ' newtoni pe metru pătrat ',
-        'J/kg': ' jouli pe kilogram ',
-        'W/m²': ' wați pe metru pătrat ',
-        'W/m^2': ' wați pe metru pătrat ',
-        'A/m': ' amperi pe metru ',
-        'V/m': ' volți pe metru ',
-        'mol/L': ' moli pe litru ',
-        'g/mol': ' grame pe mol ',
-        'N·m': ' newton metri ',
-        'N*m': ' newton metri ',
-        'kg·m/s': ' kilogram metri pe secundă ',
-        'kW·h': ' kilowatt oră ',
-        'kWh': ' kilowatt oră ',
-        
-        # Punctuație - tratare specială
         '...': ' ',
         '…': ' ',
+        'N·m': ' newton metri ',
+        'N*m': ' newton metri ',
+        'kW·h': ' kilowatt oră ',
+        'kWh': ' kilowatt oră ',
     }
     
     for combo, replacement in special_combinations.items():
         text = text.replace(combo, replacement)
     
-    # 3. CARACTERE UNICODE GRECEȘTI ȘI SIMBOLURI → Text citibil
+    # 4. CARACTERE UNICODE GRECEȘTI ȘI SIMBOLURI
+    # NOTĂ: Ω a fost deja procesat mai sus în context de unități!
     greek_unicode = {
         # Litere mici grecești
         'α': ' alfa ',
@@ -416,7 +516,7 @@ def clean_text_for_audio(text: str) -> str:
         'Φ': ' fi ',
         'Χ': ' hi ',
         'Ψ': ' psi ',
-        'Ω': ' omega ',
+        'Ω': ' omega ',  # Rămâne omega doar dacă NU e după număr (a fost deja procesat)
         
         # Simboluri matematice Unicode
         '∞': ' infinit ',
@@ -469,13 +569,6 @@ def clean_text_for_audio(text: str) -> str:
         '⊥': ' perpendicular pe ',
         '∥': ' paralel cu ',
         '△': ' triunghiul ',
-        '□': ' ',
-        '○': ' ',
-        '★': ' ',
-        '☆': ' ',
-        '✓': ' corect ',
-        '✗': ' greșit ',
-        '✘': ' greșit ',
         
         # Operatori de bază
         '>': ' mai mare decât ',
@@ -483,7 +576,6 @@ def clean_text_for_audio(text: str) -> str:
         '=': ' egal ',
         '+': ' plus ',
         '−': ' minus ',
-        # '-': ' minus ',  # NU include cratima normală - se folosește în cuvinte!
         '—': ' ',
         '–': ' ',
         '·': ' ori ',
@@ -502,9 +594,6 @@ def clean_text_for_audio(text: str) -> str:
         '⁷': ' la puterea 7 ',
         '⁸': ' la puterea 8 ',
         '⁹': ' la puterea 9 ',
-        '⁺': ' plus ',
-        '⁻': ' minus ',
-        '⁼': ' egal ',
         'ⁿ': ' la puterea n ',
         '₀': ' indice 0 ',
         '₁': ' indice 1 ',
@@ -516,9 +605,6 @@ def clean_text_for_audio(text: str) -> str:
         '₇': ' indice 7 ',
         '₈': ' indice 8 ',
         '₉': ' indice 9 ',
-        '₊': ' plus ',
-        '₋': ' minus ',
-        '₌': ' egal ',
         'ₙ': ' indice n ',
         'ₓ': ' indice x ',
         
@@ -528,33 +614,18 @@ def clean_text_for_audio(text: str) -> str:
         '⅔': ' două treimi ',
         '¼': ' un sfert ',
         '¾': ' trei sferturi ',
-        '⅕': ' o cincime ',
-        '⅖': ' două cincimi ',
-        '⅗': ' trei cincimi ',
-        '⅘': ' patru cincimi ',
-        '⅙': ' o șesime ',
-        '⅚': ' cinci șesimi ',
-        '⅛': ' o optime ',
-        '⅜': ' trei optimi ',
-        '⅝': ' cinci optimi ',
-        '⅞': ' șapte optimi ',
         
         # Alte simboluri
         '%': ' procent ',
         '&': ' și ',
-        '@': ' la ',
         '#': ' numărul ',
         '~': ' aproximativ ',
-        '≅': ' congruent cu ',
-        '≃': ' aproximativ egal cu ',
         '|': ' ',
         '‖': ' ',
         '⋯': ' ',
-        '∘': ' compus cu ',
         '∧': ' și ',
         '∨': ' sau ',
         '¬': ' negația lui ',
-        '∎': ' ',
         
         # Litere speciale
         'ℕ': ' mulțimea numerelor naturale ',
@@ -562,201 +633,85 @@ def clean_text_for_audio(text: str) -> str:
         'ℚ': ' mulțimea numerelor raționale ',
         'ℝ': ' mulțimea numerelor reale ',
         'ℂ': ' mulțimea numerelor complexe ',
-        '℃': ' grade Celsius ',
-        '℉': ' grade Fahrenheit ',
-        'Å': ' angstrom ',
-        '№': ' numărul ',
-        
-        # IMPORTANT: NU include aici caracterele de punctuație obișnuite!
-        # ':', ';', ',', '.' - acestea sunt gestionate de TTS automat
-        # '*' - poate fi parte din Markdown
-        # '/' - poate fi parte din fracții sau căi
     }
     
     # Aplică conversiile Unicode
     for symbol, pronunciation in greek_unicode.items():
         text = text.replace(symbol, pronunciation)
     
-    # 4. Tratare specială pentru punctuație în context matematic
-    # Înlocuiește ":" doar când e între cifre (proporții matematice)
+    # 5. Tratare specială pentru punctuație în context matematic
     text = re.sub(r'(\d)\s*:\s*(\d)', r'\1 este la \2', text)
-    
-    # Înlocuiește "/" doar când e între cifre sau litere simple (fracții)
     text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1 supra \2', text)
-    text = re.sub(r'(\w)\s*/\s*(\w)', r'\1 supra \2', text)
+    text = re.sub(r':\s*$', '.', text)
+    text = re.sub(r':\s*\n', '.\n', text)
+    text = re.sub(r'(\w):\s+', r'\1. ', text)
     
-    # Elimină ":" în alte contexte (după cuvinte, la sfârșitul propozițiilor)
-    text = re.sub(r':\s*$', '.', text)  # ":" la final -> "."
-    text = re.sub(r':\s*\n', '.\n', text)  # ":" urmat de newline -> "."
-    text = re.sub(r'(\w):\s+', r'\1. ', text)  # "cuvânt: " -> "cuvânt. "
-    
-    # 5. Convertește LaTeX comun în text citibil (restul funcției rămâne la fel)
+    # 6. Convertește LaTeX în text citibil
     latex_to_text = {
-        # Operații de bază
         r'\\sqrt\{([^}]+)\}': r' radical din \1 ',
         r'\\sqrt\[(\d+)\]\{([^}]+)\}': r' radical de ordin \1 din \2 ',
         r'\\frac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
         r'\\dfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
-        r'\\tfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
-        
-        # Puteri și indici
         r'\^(\d+)': r' la puterea \1 ',
         r'\^\{([^}]+)\}': r' la puterea \1 ',
         r'_(\d+)': r' indice \1 ',
         r'_\{([^}]+)\}': r' indice \1 ',
-        
-        # Simboluri grecești LaTeX
         r'\\alpha': ' alfa ',
         r'\\beta': ' beta ',
         r'\\gamma': ' gama ',
         r'\\delta': ' delta ',
         r'\\epsilon': ' epsilon ',
-        r'\\varepsilon': ' epsilon ',
-        r'\\zeta': ' zeta ',
         r'\\eta': ' eta ',
         r'\\theta': ' teta ',
-        r'\\vartheta': ' teta ',
-        r'\\iota': ' iota ',
-        r'\\kappa': ' kapa ',
         r'\\lambda': ' lambda ',
         r'\\mu': ' miu ',
-        r'\\nu': ' niu ',
-        r'\\xi': ' csi ',
         r'\\pi': ' pi ',
-        r'\\varpi': ' pi ',
         r'\\rho': ' ro ',
-        r'\\varrho': ' ro ',
         r'\\sigma': ' sigma ',
-        r'\\varsigma': ' sigma ',
         r'\\tau': ' tau ',
-        r'\\upsilon': ' ipsilon ',
         r'\\phi': ' fi ',
-        r'\\varphi': ' fi ',
-        r'\\chi': ' hi ',
-        r'\\psi': ' psi ',
         r'\\omega': ' omega ',
-        
-        # Litere mari grecești LaTeX
-        r'\\Gamma': ' gama ',
-        r'\\Delta': ' delta ',
-        r'\\Theta': ' teta ',
-        r'\\Lambda': ' lambda ',
-        r'\\Xi': ' csi ',
-        r'\\Pi': ' pi ',
-        r'\\Sigma': ' sigma ',
-        r'\\Upsilon': ' ipsilon ',
-        r'\\Phi': ' fi ',
-        r'\\Psi': ' psi ',
         r'\\Omega': ' omega ',
-        
-        # Operatori
         r'\\times': ' ori ',
         r'\\cdot': ' ori ',
         r'\\div': ' împărțit la ',
         r'\\pm': ' plus minus ',
-        r'\\mp': ' minus plus ',
         r'\\leq': ' mai mic sau egal cu ',
-        r'\\le': ' mai mic sau egal cu ',
         r'\\geq': ' mai mare sau egal cu ',
-        r'\\ge': ' mai mare sau egal cu ',
         r'\\neq': ' diferit de ',
-        r'\\ne': ' diferit de ',
         r'\\approx': ' aproximativ egal cu ',
-        r'\\equiv': ' echivalent cu ',
-        r'\\sim': ' similar cu ',
-        r'\\propto': ' proporțional cu ',
         r'\\infty': ' infinit ',
         r'\\sum': ' suma ',
-        r'\\prod': ' produsul ',
         r'\\int': ' integrala ',
-        r'\\iint': ' integrala dublă ',
-        r'\\iiint': ' integrala triplă ',
-        r'\\oint': ' integrala pe contur ',
         r'\\lim': ' limita ',
         r'\\log': ' logaritm de ',
         r'\\ln': ' logaritm natural de ',
-        r'\\lg': ' logaritm zecimal de ',
-        r'\\exp': ' exponențiala de ',
         r'\\sin': ' sinus de ',
         r'\\cos': ' cosinus de ',
         r'\\tan': ' tangentă de ',
-        r'\\tg': ' tangentă de ',
-        r'\\cot': ' cotangentă de ',
-        r'\\ctg': ' cotangentă de ',
-        r'\\sec': ' secantă de ',
-        r'\\csc': ' cosecantă de ',
-        r'\\arcsin': ' arc sinus de ',
-        r'\\arccos': ' arc cosinus de ',
-        r'\\arctan': ' arc tangentă de ',
-        r'\\arctg': ' arc tangentă de ',
-        
-        # Fracții speciale
-        r'\\frac\{1\}\{2\}': ' o doime ',
-        r'\\frac\{1\}\{3\}': ' o treime ',
-        r'\\frac\{2\}\{3\}': ' două treimi ',
-        r'\\frac\{1\}\{4\}': ' un sfert ',
-        r'\\frac\{3\}\{4\}': ' trei sferturi ',
-        
-        # Săgeți și relații
         r'\\rightarrow': ' implică ',
-        r'\\to': ' tinde la ',
         r'\\Rightarrow': ' rezultă că ',
-        r'\\leftarrow': ' provine din ',
-        r'\\Leftarrow': ' este implicat de ',
-        r'\\leftrightarrow': ' echivalent cu ',
-        r'\\Leftrightarrow': ' dacă și numai dacă ',
-        r'\\forall': ' pentru orice ',
-        r'\\exists': ' există ',
-        r'\\nexists': ' nu există ',
         r'\\in': ' aparține lui ',
-        r'\\notin': ' nu aparține lui ',
         r'\\subset': ' inclus în ',
-        r'\\supset': ' include ',
-        r'\\subseteq': ' inclus sau egal cu ',
-        r'\\supseteq': ' include sau egal cu ',
         r'\\cup': ' reunit cu ',
         r'\\cap': ' intersectat cu ',
-        r'\\emptyset': ' mulțimea vidă ',
-        r'\\varnothing': ' mulțimea vidă ',
-        
-        # Mulțimi speciale
-        r'\\mathbb\{R\}': ' mulțimea numerelor reale ',
-        r'\\mathbb\{N\}': ' mulțimea numerelor naturale ',
-        r'\\mathbb\{Z\}': ' mulțimea numerelor întregi ',
-        r'\\mathbb\{Q\}': ' mulțimea numerelor raționale ',
-        r'\\mathbb\{C\}': ' mulțimea numerelor complexe ',
-        
-        # Alte simboluri
-        r'\\partial': ' derivata parțială ',
-        r'\\nabla': ' nabla ',
-        r'\\degree': ' grade ',
-        r'\\circ': ' grad ',
-        r'\\angle': ' unghiul ',
-        r'\\perp': ' perpendicular pe ',
-        r'\\parallel': ' paralel cu ',
-        r'\\triangle': ' triunghiul ',
-        r'\\therefore': ' deci ',
-        r'\\because': ' deoarece ',
-        r'\\lt': ' mai mic decât ',
-        r'\\gt': ' mai mare decât ',
     }
     
-    # Aplică conversiile LaTeX
     for pattern, replacement in latex_to_text.items():
         text = re.sub(pattern, replacement, text)
     
-    # 6. Elimină delimitatorii LaTeX rămași
+    # 7. Elimină delimitatori LaTeX
     text = re.sub(r'\$\$([^$]+)\$\$', r' \1 ', text)
     text = re.sub(r'\$([^$]+)\$', r' \1 ', text)
     text = re.sub(r'\\\[(.+?)\\\]', r' \1 ', text, flags=re.DOTALL)
     text = re.sub(r'\\\((.+?)\\\)', r' \1 ', text)
     
-    # 7. Curăță comenzile LaTeX rămase
+    # 8. Curăță comenzi LaTeX rămase
     text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
     text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = re.sub(r'[{}\\]', '', text)
     
-    # 8. Elimină Markdown
+    # 9. Elimină Markdown
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
     text = re.sub(r'\*([^*]+)\*', r'\1', text)
     text = re.sub(r'`([^`]+)`', r'\1', text)
@@ -764,13 +719,11 @@ def clean_text_for_audio(text: str) -> str:
     text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     
-    # 9. Elimină HTML rămas
+    # 10. Elimină HTML
     text = re.sub(r'<[^>]+>', '', text)
     
-    # 10. Curăță caractere speciale rămase care nu au sens în audio
+    # 11. Curăță caractere speciale și punctuație rămasă
     text = re.sub(r'[│▌►◄■▪▫\[\](){}]', ' ', text)
-    
-    # 11. Curăță ":" rămase care nu au fost procesate
     text = re.sub(r'\s*:\s*', '. ', text)
     
     # 12. Curăță spații multiple
