@@ -303,14 +303,22 @@ def save_message_with_limits(session_id: str, role: str, content: str):
     trim_session_messages()
 
 
-# === AUDIO / TTS FUNCTIONS (FIX LATEX ÎN AUDIO + VOCE BĂRBAT) ===
-       # 2. UNITĂȚI DE MĂSURĂ CU CONTEXT (trebuie procesate PRIMELE!)
+# === AUDIO / TTS FUNCTIONS (FIX LATEX ÎN AUDIO + VOCE BĂRBAT + UNITĂȚI FIZICE) ===
+def clean_text_for_audio(text: str) -> str:
+    """Curăță textul de LaTeX, SVG, Markdown pentru TTS."""
+    if not text:
+        return ""
+    
+    # 1. Elimină blocuri SVG complet
+    text = re.sub(r'\[\[DESEN_SVG\]\].*?\[\[/DESEN_SVG\]\]', 
+                  ' Am desenat o figură pentru tine. ', text, flags=re.DOTALL)
+    text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
+    
+    # 2. UNITĂȚI DE MĂSURĂ CU CONTEXT (trebuie procesate PRIMELE!)
     # Pattern pentru numere: întregi sau cu zecimale (0.1, 3.14, 100, 2,5)
-    # (\d+[.,]?\d*) = una sau mai multe cifre, opțional punct/virgulă, opțional alte cifre
+    num = r'(\d+[.,]?\d*)'
     
-    num = r'(\d+[.,]?\d*)'  # Pattern pentru numere (întregi sau zecimale)
-    
-    # Rezistență - Ω (ohmi)
+    # Rezistență - Ω (ohmi) - IMPORTANT: procesăm ÎNAINTE de grecești!
     text = re.sub(num + r'\s*GΩ', r'\1 gigaohmi', text)
     text = re.sub(num + r'\s*MΩ', r'\1 megaohmi', text)
     text = re.sub(num + r'\s*kΩ', r'\1 kiloohmi', text)
@@ -481,7 +489,6 @@ def save_message_with_limits(session_id: str, role: str, content: str):
     # Chimie
     text = re.sub(num + r'\s*mol\b', r'\1 moli', text)
     text = re.sub(num + r'\s*M\b', r'\1 molar', text)
-    text = re.sub(num + r'\s*pH\b', r'\1 pe ha', text)
     
     # Energie specială
     text = re.sub(num + r'\s*kWh', r'\1 kilowatt oră', text)
@@ -504,9 +511,449 @@ def save_message_with_limits(session_id: str, role: str, content: str):
     # Unghiuri
     text = re.sub(num + r'\s*rad\b', r'\1 radiani', text)
     text = re.sub(num + r'\s*sr\b', r'\1 steradiani', text)
+    
+    # 3. ÎNLOCUIRI SPECIALE PENTRU COMBINAȚII
+    special_combinations = {
+        '>=': ' mai mare sau egal cu ',
+        '<=': ' mai mic sau egal cu ',
+        '!=': ' diferit de ',
+        '==': ' egal cu ',
+        '<>': ' diferit de ',
+        '>>': ' mult mai mare decât ',
+        '<<': ' mult mai mic decât ',
+        '->': ' implică ',
+        '<-': ' provine din ',
+        '<->': ' echivalent cu ',
+        '=>': ' rezultă că ',
+        '...': ' ',
+        '…': ' ',
+        'N·m': ' newton metri ',
+        'N*m': ' newton metri ',
+        'kW·h': ' kilowatt oră ',
+    }
+    
+    for combo, replacement in special_combinations.items():
+        text = text.replace(combo, replacement)
+    
+    # 4. CARACTERE UNICODE GRECEȘTI ȘI SIMBOLURI
+    greek_unicode = {
+        # Litere mici grecești
+        'α': ' alfa ',
+        'β': ' beta ',
+        'γ': ' gama ',
+        'δ': ' delta ',
+        'ε': ' epsilon ',
+        'ζ': ' zeta ',
+        'η': ' eta ',
+        'θ': ' teta ',
+        'ι': ' iota ',
+        'κ': ' kapa ',
+        'λ': ' lambda ',
+        'μ': ' miu ',
+        'ν': ' niu ',
+        'ξ': ' csi ',
+        'ο': ' omicron ',
+        'π': ' pi ',
+        'ρ': ' ro ',
+        'σ': ' sigma ',
+        'ς': ' sigma ',
+        'τ': ' tau ',
+        'υ': ' ipsilon ',
+        'φ': ' fi ',
+        'χ': ' hi ',
+        'ψ': ' psi ',
+        'ω': ' omega ',
+        
+        # Litere mari grecești
+        'Α': ' alfa ',
+        'Β': ' beta ',
+        'Γ': ' gama ',
+        'Δ': ' delta ',
+        'Ε': ' epsilon ',
+        'Ζ': ' zeta ',
+        'Η': ' eta ',
+        'Θ': ' teta ',
+        'Ι': ' iota ',
+        'Κ': ' kapa ',
+        'Λ': ' lambda ',
+        'Μ': ' miu ',
+        'Ν': ' niu ',
+        'Ξ': ' csi ',
+        'Ο': ' omicron ',
+        'Π': ' pi ',
+        'Ρ': ' ro ',
+        'Σ': ' sigma ',
+        'Τ': ' tau ',
+        'Υ': ' ipsilon ',
+        'Φ': ' fi ',
+        'Χ': ' hi ',
+        'Ψ': ' psi ',
+        'Ω': ' omega ',
+        
+        # Simboluri matematice Unicode
+        '∞': ' infinit ',
+        '∑': ' suma ',
+        '∏': ' produsul ',
+        '∫': ' integrala ',
+        '∂': ' derivata parțială ',
+        '√': ' radical din ',
+        '∛': ' radical de ordin 3 din ',
+        '∜': ' radical de ordin 4 din ',
+        '±': ' plus minus ',
+        '∓': ' minus plus ',
+        '×': ' ori ',
+        '÷': ' împărțit la ',
+        '≠': ' diferit de ',
+        '≈': ' aproximativ egal cu ',
+        '≡': ' identic cu ',
+        '≤': ' mai mic sau egal cu ',
+        '≥': ' mai mare sau egal cu ',
+        '≪': ' mult mai mic decât ',
+        '≫': ' mult mai mare decât ',
+        '∝': ' proporțional cu ',
+        '∈': ' aparține lui ',
+        '∉': ' nu aparține lui ',
+        '⊂': ' inclus în ',
+        '⊃': ' include ',
+        '⊆': ' inclus sau egal cu ',
+        '⊇': ' include sau egal cu ',
+        '∪': ' reunit cu ',
+        '∩': ' intersectat cu ',
+        '∅': ' mulțimea vidă ',
+        '∀': ' pentru orice ',
+        '∃': ' există ',
+        '∄': ' nu există ',
+        '∴': ' deci ',
+        '∵': ' deoarece ',
+        '→': ' implică ',
+        '←': ' rezultă din ',
+        '↔': ' echivalent cu ',
+        '⇒': ' rezultă că ',
+        '⇐': ' provine din ',
+        '⇔': ' dacă și numai dacă ',
+        '↑': ' crește ',
+        '↓': ' scade ',
+        '°': ' grade ',
+        '′': ' ',
+        '″': ' ',
+        '‰': ' la mie ',
+        '∠': ' unghiul ',
+        '⊥': ' perpendicular pe ',
+        '∥': ' paralel cu ',
+        '△': ' triunghiul ',
+        '□': ' ',
+        '○': ' ',
+        '★': ' ',
+        '☆': ' ',
+        '✓': ' corect ',
+        '✗': ' greșit ',
+        '✘': ' greșit ',
+        
+        # Operatori de bază
+        '>': ' mai mare decât ',
+        '<': ' mai mic decât ',
+        '=': ' egal ',
+        '+': ' plus ',
+        '−': ' minus ',
+        '—': ' ',
+        '–': ' ',
+        '·': ' ori ',
+        '•': ' ',
+        '∙': ' ori ',
+        '⋅': ' ori ',
+        
+        # Indici și exponenți Unicode
+        '⁰': ' la puterea 0 ',
+        '¹': ' la puterea 1 ',
+        '²': ' la pătrat ',
+        '³': ' la cub ',
+        '⁴': ' la puterea 4 ',
+        '⁵': ' la puterea 5 ',
+        '⁶': ' la puterea 6 ',
+        '⁷': ' la puterea 7 ',
+        '⁸': ' la puterea 8 ',
+        '⁹': ' la puterea 9 ',
+        '⁺': ' plus ',
+        '⁻': ' minus ',
+        '⁼': ' egal ',
+        'ⁿ': ' la puterea n ',
+        '₀': ' indice 0 ',
+        '₁': ' indice 1 ',
+        '₂': ' indice 2 ',
+        '₃': ' indice 3 ',
+        '₄': ' indice 4 ',
+        '₅': ' indice 5 ',
+        '₆': ' indice 6 ',
+        '₇': ' indice 7 ',
+        '₈': ' indice 8 ',
+        '₉': ' indice 9 ',
+        '₊': ' plus ',
+        '₋': ' minus ',
+        '₌': ' egal ',
+        'ₙ': ' indice n ',
+        'ₓ': ' indice x ',
+        
+        # Fracții Unicode
+        '½': ' o doime ',
+        '⅓': ' o treime ',
+        '⅔': ' două treimi ',
+        '¼': ' un sfert ',
+        '¾': ' trei sferturi ',
+        '⅕': ' o cincime ',
+        '⅖': ' două cincimi ',
+        '⅗': ' trei cincimi ',
+        '⅘': ' patru cincimi ',
+        '⅙': ' o șesime ',
+        '⅚': ' cinci șesimi ',
+        '⅛': ' o optime ',
+        '⅜': ' trei optimi ',
+        '⅝': ' cinci optimi ',
+        '⅞': ' șapte optimi ',
+        
+        # Alte simboluri
+        '%': ' procent ',
+        '&': ' și ',
+        '#': ' numărul ',
+        '~': ' aproximativ ',
+        '≅': ' congruent cu ',
+        '≃': ' aproximativ egal cu ',
+        '|': ' ',
+        '‖': ' ',
+        '⋯': ' ',
+        '∧': ' și ',
+        '∨': ' sau ',
+        '¬': ' negația lui ',
+        '∎': ' ',
+        
+        # Litere speciale
+        'ℕ': ' mulțimea numerelor naturale ',
+        'ℤ': ' mulțimea numerelor întregi ',
+        'ℚ': ' mulțimea numerelor raționale ',
+        'ℝ': ' mulțimea numerelor reale ',
+        'ℂ': ' mulțimea numerelor complexe ',
+        '℃': ' grade Celsius ',
+        '℉': ' grade Fahrenheit ',
+        'Å': ' angstrom ',
+        '№': ' numărul ',
+    }
+    
+    # Aplică conversiile Unicode
+    for symbol, pronunciation in greek_unicode.items():
+        text = text.replace(symbol, pronunciation)
+    
+    # 5. Tratare specială pentru punctuație în context matematic
+    # ":" între cifre = proporție matematică
+    text = re.sub(r'(\d)\s*:\s*(\d)', r'\1 este la \2', text)
+    # "/" între cifre = fracție
+    text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1 supra \2', text)
+    # ":" în alte contexte = pauză/punct
+    text = re.sub(r':\s*$', '.', text)
+    text = re.sub(r':\s*\n', '.\n', text)
+    text = re.sub(r'(\w):\s+', r'\1. ', text)
+    
+    # 6. Convertește LaTeX comun în text citibil (ROMÂNĂ)
+    latex_to_text = {
+        # Operații de bază
+        r'\\sqrt\{([^}]+)\}': r' radical din \1 ',
+        r'\\sqrt\[(\d+)\]\{([^}]+)\}': r' radical de ordin \1 din \2 ',
+        r'\\frac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
+        r'\\dfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
+        r'\\tfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
+        
+        # Puteri și indici
+        r'\^(\d+)': r' la puterea \1 ',
+        r'\^\{([^}]+)\}': r' la puterea \1 ',
+        r'_(\d+)': r' indice \1 ',
+        r'_\{([^}]+)\}': r' indice \1 ',
+        
+        # Simboluri grecești LaTeX
+        r'\\alpha': ' alfa ',
+        r'\\beta': ' beta ',
+        r'\\gamma': ' gama ',
+        r'\\delta': ' delta ',
+        r'\\epsilon': ' epsilon ',
+        r'\\varepsilon': ' epsilon ',
+        r'\\zeta': ' zeta ',
+        r'\\eta': ' eta ',
+        r'\\theta': ' teta ',
+        r'\\vartheta': ' teta ',
+        r'\\iota': ' iota ',
+        r'\\kappa': ' kapa ',
+        r'\\lambda': ' lambda ',
+        r'\\mu': ' miu ',
+        r'\\nu': ' niu ',
+        r'\\xi': ' csi ',
+        r'\\pi': ' pi ',
+        r'\\varpi': ' pi ',
+        r'\\rho': ' ro ',
+        r'\\varrho': ' ro ',
+        r'\\sigma': ' sigma ',
+        r'\\varsigma': ' sigma ',
+        r'\\tau': ' tau ',
+        r'\\upsilon': ' ipsilon ',
+        r'\\phi': ' fi ',
+        r'\\varphi': ' fi ',
+        r'\\chi': ' hi ',
+        r'\\psi': ' psi ',
+        r'\\omega': ' omega ',
+        
+        # Litere mari grecești LaTeX
+        r'\\Gamma': ' gama ',
+        r'\\Delta': ' delta ',
+        r'\\Theta': ' teta ',
+        r'\\Lambda': ' lambda ',
+        r'\\Xi': ' csi ',
+        r'\\Pi': ' pi ',
+        r'\\Sigma': ' sigma ',
+        r'\\Upsilon': ' ipsilon ',
+        r'\\Phi': ' fi ',
+        r'\\Psi': ' psi ',
+        r'\\Omega': ' omega ',
+        
+        # Operatori
+        r'\\times': ' ori ',
+        r'\\cdot': ' ori ',
+        r'\\div': ' împărțit la ',
+        r'\\pm': ' plus minus ',
+        r'\\mp': ' minus plus ',
+        r'\\leq': ' mai mic sau egal cu ',
+        r'\\le': ' mai mic sau egal cu ',
+        r'\\geq': ' mai mare sau egal cu ',
+        r'\\ge': ' mai mare sau egal cu ',
+        r'\\neq': ' diferit de ',
+        r'\\ne': ' diferit de ',
+        r'\\approx': ' aproximativ egal cu ',
+        r'\\equiv': ' echivalent cu ',
+        r'\\sim': ' similar cu ',
+        r'\\propto': ' proporțional cu ',
+        r'\\infty': ' infinit ',
+        r'\\sum': ' suma ',
+        r'\\prod': ' produsul ',
+        r'\\int': ' integrala ',
+        r'\\iint': ' integrala dublă ',
+        r'\\iiint': ' integrala triplă ',
+        r'\\oint': ' integrala pe contur ',
+        r'\\lim': ' limita ',
+        r'\\log': ' logaritm de ',
+        r'\\ln': ' logaritm natural de ',
+        r'\\lg': ' logaritm zecimal de ',
+        r'\\exp': ' exponențiala de ',
+        r'\\sin': ' sinus de ',
+        r'\\cos': ' cosinus de ',
+        r'\\tan': ' tangentă de ',
+        r'\\tg': ' tangentă de ',
+        r'\\cot': ' cotangentă de ',
+        r'\\ctg': ' cotangentă de ',
+        r'\\sec': ' secantă de ',
+        r'\\csc': ' cosecantă de ',
+        r'\\arcsin': ' arc sinus de ',
+        r'\\arccos': ' arc cosinus de ',
+        r'\\arctan': ' arc tangentă de ',
+        r'\\arctg': ' arc tangentă de ',
+        r'\\sinh': ' sinus hiperbolic de ',
+        r'\\cosh': ' cosinus hiperbolic de ',
+        r'\\tanh': ' tangentă hiperbolică de ',
+        
+        # Fracții speciale
+        r'\\frac\{1\}\{2\}': ' o doime ',
+        r'\\frac\{1\}\{3\}': ' o treime ',
+        r'\\frac\{2\}\{3\}': ' două treimi ',
+        r'\\frac\{1\}\{4\}': ' un sfert ',
+        r'\\frac\{3\}\{4\}': ' trei sferturi ',
+        
+        # Săgeți și relații
+        r'\\rightarrow': ' implică ',
+        r'\\to': ' tinde la ',
+        r'\\Rightarrow': ' rezultă că ',
+        r'\\leftarrow': ' provine din ',
+        r'\\Leftarrow': ' este implicat de ',
+        r'\\leftrightarrow': ' echivalent cu ',
+        r'\\Leftrightarrow': ' dacă și numai dacă ',
+        r'\\forall': ' pentru orice ',
+        r'\\exists': ' există ',
+        r'\\nexists': ' nu există ',
+        r'\\in': ' aparține lui ',
+        r'\\notin': ' nu aparține lui ',
+        r'\\subset': ' inclus în ',
+        r'\\supset': ' include ',
+        r'\\subseteq': ' inclus sau egal cu ',
+        r'\\supseteq': ' include sau egal cu ',
+        r'\\cup': ' reunit cu ',
+        r'\\cap': ' intersectat cu ',
+        r'\\emptyset': ' mulțimea vidă ',
+        r'\\varnothing': ' mulțimea vidă ',
+        
+        # Mulțimi speciale
+        r'\\mathbb\{R\}': ' mulțimea numerelor reale ',
+        r'\\mathbb\{N\}': ' mulțimea numerelor naturale ',
+        r'\\mathbb\{Z\}': ' mulțimea numerelor întregi ',
+        r'\\mathbb\{Q\}': ' mulțimea numerelor raționale ',
+        r'\\mathbb\{C\}': ' mulțimea numerelor complexe ',
+        
+        # Alte simboluri
+        r'\\partial': ' derivata parțială ',
+        r'\\nabla': ' nabla ',
+        r'\\degree': ' grade ',
+        r'\\circ': ' grad ',
+        r'\\angle': ' unghiul ',
+        r'\\measuredangle': ' unghiul ',
+        r'\\perp': ' perpendicular pe ',
+        r'\\parallel': ' paralel cu ',
+        r'\\triangle': ' triunghiul ',
+        r'\\square': ' pătratul ',
+        r'\\therefore': ' deci ',
+        r'\\because': ' deoarece ',
+        r'\\lt': ' mai mic decât ',
+        r'\\gt': ' mai mare decât ',
+    }
+    
+    # Aplică conversiile LaTeX
+    for pattern, replacement in latex_to_text.items():
+        text = re.sub(pattern, replacement, text)
+    
+    # 7. Elimină delimitatorii LaTeX rămași
+    text = re.sub(r'\$\$([^$]+)\$\$', r' \1 ', text)
+    text = re.sub(r'\$([^$]+)\$', r' \1 ', text)
+    text = re.sub(r'\\\[(.+?)\\\]', r' \1 ', text, flags=re.DOTALL)
+    text = re.sub(r'\\\((.+?)\\\)', r' \1 ', text)
+    
+    # 8. Curăță comenzile LaTeX rămase
+    text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
+    text = re.sub(r'\\[a-zA-Z]+', '', text)
+    text = re.sub(r'[{}\\]', '', text)
+    
+    # 9. Elimină Markdown
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    
+    # 10. Elimină HTML rămas
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # 11. Curăță caractere speciale rămase
+    text = re.sub(r'[│▌►◄■▪▫\[\](){}]', ' ', text)
+    
+    # 12. Curăță ":" rămase
+    text = re.sub(r'\s*:\s*', '. ', text)
+    
+    # 13. Curăță spații multiple
+    text = re.sub(r'\s+', ' ', text)
+    
+    # 14. Limitează lungimea
+    text = text.strip()
+    if len(text) > 3000:
+        text = text[:3000]
+        last_period = max(text.rfind('.'), text.rfind('!'), text.rfind('?'))
+        if last_period > 2500:
+            text = text[:last_period + 1]
+    
+    return text
 
 
-async def _generate_audio_edge_tts(text: str, voice: str = VOICE_MALE_RO) -> bytes | None:
+async def _generate_audio_edge_tts(text: str, voice: str = VOICE_MALE_RO) -> bytes:
     """Generează audio folosind Edge TTS (async)."""
     try:
         clean_text = clean_text_for_audio(text)
@@ -529,7 +976,7 @@ async def _generate_audio_edge_tts(text: str, voice: str = VOICE_MALE_RO) -> byt
         return None
 
 
-def generate_professor_voice(text: str, voice: str = VOICE_MALE_RO) -> BytesIO | None:
+def generate_professor_voice(text: str, voice: str = VOICE_MALE_RO) -> BytesIO:
     """Wrapper sincron pentru Edge TTS - voce de bărbat (Domnul Profesor)."""
     try:
         # Creează un nou event loop pentru fiecare apel
@@ -757,7 +1204,7 @@ if "key_index" not in st.session_state:
 
 
 # === SYSTEM PROMPT ===
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT = r"""
 ROL: Ești un profesor de liceu din România, universal (Mate, Fizică, Chimie, Literatură si Gramatica Romana, Franceza, Engleza, Geografie, Istorie, Informatica), bărbat, cu experiență în pregătirea pentru BAC.
     
     REGULI DE IDENTITATE (STRICT):
