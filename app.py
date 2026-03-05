@@ -314,8 +314,9 @@ def clean_text_for_audio(text: str) -> str:
                   ' Am desenat o figură pentru tine. ', text, flags=re.DOTALL)
     text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
     
-    # 2. ÎNLOCUIRI SPECIALE PENTRU COMBINAȚII (trebuie făcute ÎNAINTE de caractere individuale)
+    # 2. ÎNLOCUIRI SPECIALE PENTRU COMBINAȚII (ÎNAINTE de caractere individuale)
     special_combinations = {
+        # Comparații și operatori compuși
         '>=': ' mai mare sau egal cu ',
         '<=': ' mai mic sau egal cu ',
         '!=': ' diferit de ',
@@ -328,15 +329,22 @@ def clean_text_for_audio(text: str) -> str:
         '<->': ' echivalent cu ',
         '=>': ' rezultă că ',
         '...': ' și așa mai departe ',
-        'm/s': ' metri pe secundă ',
+        
+        # Unități de măsură compuse
         'm/s²': ' metri pe secundă la pătrat ',
         'm/s^2': ' metri pe secundă la pătrat ',
+        'm/s': ' metri pe secundă ',
         'km/h': ' kilometri pe oră ',
+        'km/s': ' kilometri pe secundă ',
         'kg/m³': ' kilograme pe metru cub ',
         'kg/m^3': ' kilograme pe metru cub ',
+        'g/cm³': ' grame pe centimetru cub ',
+        'g/cm^3': ' grame pe centimetru cub ',
         'N/m²': ' newtoni pe metru pătrat ',
+        'N/m^2': ' newtoni pe metru pătrat ',
         'J/kg': ' jouli pe kilogram ',
         'W/m²': ' wați pe metru pătrat ',
+        'W/m^2': ' wați pe metru pătrat ',
         'A/m': ' amperi pe metru ',
         'V/m': ' volți pe metru ',
         'mol/L': ' moli pe litru ',
@@ -344,6 +352,12 @@ def clean_text_for_audio(text: str) -> str:
         'N·m': ' newton metri ',
         'N*m': ' newton metri ',
         'kg·m/s': ' kilogram metri pe secundă ',
+        'kW·h': ' kilowatt oră ',
+        'kWh': ' kilowatt oră ',
+        
+        # Punctuație - tratare specială
+        '...': ' ',
+        '…': ' ',
     }
     
     for combo, replacement in special_combinations.items():
@@ -447,33 +461,31 @@ def clean_text_for_audio(text: str) -> str:
         '⇔': ' dacă și numai dacă ',
         '↑': ' crește ',
         '↓': ' scade ',
-        '↗': ' crește ',
-        '↘': ' scade ',
         '°': ' grade ',
-        '′': ' prim ',
-        '″': ' secund ',
+        '′': ' ',
+        '″': ' ',
         '‰': ' la mie ',
         '∠': ' unghiul ',
         '⊥': ' perpendicular pe ',
         '∥': ' paralel cu ',
         '△': ' triunghiul ',
-        '□': ' pătratul ',
-        '○': ' cercul ',
+        '□': ' ',
+        '○': ' ',
         '★': ' ',
         '☆': ' ',
         '✓': ' corect ',
         '✗': ' greșit ',
         '✘': ' greșit ',
         
-        # Operatori și comparații de bază
+        # Operatori de bază
         '>': ' mai mare decât ',
         '<': ' mai mic decât ',
         '=': ' egal ',
         '+': ' plus ',
-        '−': ' minus ',  # minus matematic (diferit de cratimă)
-        '—': ' ',  # em dash
-        '–': ' ',  # en dash
-        '*': ' ori ',
+        '−': ' minus ',
+        # '-': ' minus ',  # NU include cratima normală - se folosește în cuvinte!
+        '—': ' ',
+        '–': ' ',
         '·': ' ori ',
         '•': ' ',
         '∙': ' ori ',
@@ -527,35 +539,22 @@ def clean_text_for_audio(text: str) -> str:
         '⅝': ' cinci optimi ',
         '⅞': ' șapte optimi ',
         
-        # Punctuație și alte simboluri
+        # Alte simboluri
         '%': ' procent ',
-        '‰': ' la mie ',
         '&': ' și ',
         '@': ' la ',
         '#': ' numărul ',
         '~': ' aproximativ ',
         '≅': ' congruent cu ',
         '≃': ' aproximativ egal cu ',
-        '≜': ' definit ca ',
         '|': ' ',
         '‖': ' ',
-        '⋯': ' și așa mai departe ',
-        '…': ' și așa mai departe ',
+        '⋯': ' ',
         '∘': ' compus cu ',
-        '⊕': ' sau exclusiv ',
-        '⊗': ' produs tensorial ',
-        '⊖': ' minus ',
         '∧': ' și ',
         '∨': ' sau ',
         '¬': ' negația lui ',
-        '⊻': ' sau exclusiv ',
-        '⟹': ' implică ',
-        '⟸': ' este implicat de ',
-        '⟺': ' echivalent cu ',
-        '⊢': ' demonstrează ',
-        '⊨': ' satisface ',
-        '∎': ' ',  # QED
-        '□': ' ',  # QED
+        '∎': ' ',
         
         # Litere speciale
         'ℕ': ' mulțimea numerelor naturale ',
@@ -563,20 +562,35 @@ def clean_text_for_audio(text: str) -> str:
         'ℚ': ' mulțimea numerelor raționale ',
         'ℝ': ' mulțimea numerelor reale ',
         'ℂ': ' mulțimea numerelor complexe ',
-        'ℵ': ' alef ',
-        'ℏ': ' h barat ',
-        'ℓ': ' l ',
         '℃': ' grade Celsius ',
         '℉': ' grade Fahrenheit ',
         'Å': ' angstrom ',
         '№': ' numărul ',
+        
+        # IMPORTANT: NU include aici caracterele de punctuație obișnuite!
+        # ':', ';', ',', '.' - acestea sunt gestionate de TTS automat
+        # '*' - poate fi parte din Markdown
+        # '/' - poate fi parte din fracții sau căi
     }
     
     # Aplică conversiile Unicode
     for symbol, pronunciation in greek_unicode.items():
         text = text.replace(symbol, pronunciation)
     
-    # 4. Convertește LaTeX comun în text citibil (ROMÂNĂ)
+    # 4. Tratare specială pentru punctuație în context matematic
+    # Înlocuiește ":" doar când e între cifre (proporții matematice)
+    text = re.sub(r'(\d)\s*:\s*(\d)', r'\1 este la \2', text)
+    
+    # Înlocuiește "/" doar când e între cifre sau litere simple (fracții)
+    text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1 supra \2', text)
+    text = re.sub(r'(\w)\s*/\s*(\w)', r'\1 supra \2', text)
+    
+    # Elimină ":" în alte contexte (după cuvinte, la sfârșitul propozițiilor)
+    text = re.sub(r':\s*$', '.', text)  # ":" la final -> "."
+    text = re.sub(r':\s*\n', '.\n', text)  # ":" urmat de newline -> "."
+    text = re.sub(r'(\w):\s+', r'\1. ', text)  # "cuvânt: " -> "cuvânt. "
+    
+    # 5. Convertește LaTeX comun în text citibil (restul funcției rămâne la fel)
     latex_to_text = {
         # Operații de bază
         r'\\sqrt\{([^}]+)\}': r' radical din \1 ',
@@ -675,9 +689,6 @@ def clean_text_for_audio(text: str) -> str:
         r'\\arccos': ' arc cosinus de ',
         r'\\arctan': ' arc tangentă de ',
         r'\\arctg': ' arc tangentă de ',
-        r'\\sinh': ' sinus hiperbolic de ',
-        r'\\cosh': ' cosinus hiperbolic de ',
-        r'\\tanh': ' tangentă hiperbolică de ',
         
         # Fracții speciale
         r'\\frac\{1\}\{2\}': ' o doime ',
@@ -714,11 +725,6 @@ def clean_text_for_audio(text: str) -> str:
         r'\\mathbb\{Z\}': ' mulțimea numerelor întregi ',
         r'\\mathbb\{Q\}': ' mulțimea numerelor raționale ',
         r'\\mathbb\{C\}': ' mulțimea numerelor complexe ',
-        r'\\R': ' R ',
-        r'\\N': ' N ',
-        r'\\Z': ' Z ',
-        r'\\Q': ' Q ',
-        r'\\C': ' C ',
         
         # Alte simboluri
         r'\\partial': ' derivata parțială ',
@@ -726,34 +732,31 @@ def clean_text_for_audio(text: str) -> str:
         r'\\degree': ' grade ',
         r'\\circ': ' grad ',
         r'\\angle': ' unghiul ',
-        r'\\measuredangle': ' unghiul ',
         r'\\perp': ' perpendicular pe ',
         r'\\parallel': ' paralel cu ',
         r'\\triangle': ' triunghiul ',
-        r'\\square': ' pătratul ',
         r'\\therefore': ' deci ',
         r'\\because': ' deoarece ',
         r'\\lt': ' mai mic decât ',
         r'\\gt': ' mai mare decât ',
-        r'\\not': ' nu ',
     }
     
     # Aplică conversiile LaTeX
     for pattern, replacement in latex_to_text.items():
         text = re.sub(pattern, replacement, text)
     
-    # 5. Elimină delimitatorii LaTeX rămași
+    # 6. Elimină delimitatorii LaTeX rămași
     text = re.sub(r'\$\$([^$]+)\$\$', r' \1 ', text)
     text = re.sub(r'\$([^$]+)\$', r' \1 ', text)
     text = re.sub(r'\\\[(.+?)\\\]', r' \1 ', text, flags=re.DOTALL)
     text = re.sub(r'\\\((.+?)\\\)', r' \1 ', text)
     
-    # 6. Curăță comenzile LaTeX rămase
+    # 7. Curăță comenzile LaTeX rămase
     text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
     text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = re.sub(r'[{}\\]', '', text)
     
-    # 7. Elimină Markdown
+    # 8. Elimină Markdown
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
     text = re.sub(r'\*([^*]+)\*', r'\1', text)
     text = re.sub(r'`([^`]+)`', r'\1', text)
@@ -761,17 +764,19 @@ def clean_text_for_audio(text: str) -> str:
     text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     
-    # 8. Elimină HTML rămas
+    # 9. Elimină HTML rămas
     text = re.sub(r'<[^>]+>', '', text)
     
-    # 9. Curăță parantezele (opțional - poți comenta dacă vrei să le citească)
-    # text = re.sub(r'[(){}\[\]]', ' ', text)
+    # 10. Curăță caractere speciale rămase care nu au sens în audio
+    text = re.sub(r'[│▌►◄■▪▫\[\](){}]', ' ', text)
     
-    # 10. Curăță spații multiple și caractere speciale rămase
+    # 11. Curăță ":" rămase care nu au fost procesate
+    text = re.sub(r'\s*:\s*', '. ', text)
+    
+    # 12. Curăță spații multiple
     text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[│▌►◄■▪▫]', '', text)
     
-    # 11. Limitează lungimea
+    # 13. Limitează lungimea
     text = text.strip()
     if len(text) > 3000:
         text = text[:3000]
