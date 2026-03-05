@@ -60,7 +60,6 @@ def init_db():
     conn = get_db_connection()
     c = conn.cursor()
     
-    # Tabelul pentru mesaje
     c.execute('''
         CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,13 +70,11 @@ def init_db():
         )
     ''')
     
-    # Index pentru căutări rapide
     c.execute('''
         CREATE INDEX IF NOT EXISTS idx_history_session 
         ON history(session_id)
     ''')
     
-    # Tabelul pentru sesiuni (FIX SESSION ID COLLISION)
     c.execute('''
         CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
@@ -133,7 +130,6 @@ def load_history_from_db(session_id, limit: int = MAX_MESSAGES_IN_MEMORY):
         conn = get_db_connection()
         c = conn.cursor()
         
-        # Ia ultimele N mesaje, ordonate cronologic
         c.execute("""
             SELECT role, content FROM (
                 SELECT role, content, timestamp 
@@ -241,26 +237,22 @@ def update_session_activity(session_id: str):
 
 def get_or_create_session_id() -> str:
     """Obține session ID existent sau creează unul nou unic."""
-    # Verifică în query params
     if "session_id" in st.query_params:
         existing_id = st.query_params["session_id"]
         if existing_id and len(existing_id) >= 16:
             return existing_id
     
-    # Verifică în session state
     if "session_id" in st.session_state:
         existing_id = st.session_state.session_id
         if existing_id and len(existing_id) >= 16:
             return existing_id
     
-    # Generează nou și verifică unicitatea
     for _ in range(10):
         new_id = generate_unique_session_id()
         if not session_exists_in_db(new_id):
             register_session(new_id)
             return new_id
     
-    # Fallback extrem
     fallback_id = f"{uuid.uuid4().hex}{int(time.time())}"
     register_session(fallback_id)
     return fallback_id
@@ -283,7 +275,6 @@ def get_context_for_ai(messages: list) -> list:
     if len(messages) <= MAX_MESSAGES_TO_SEND_TO_AI:
         return messages[:-1]
     
-    # Strategia: primul mesaj + ultimele N-1 mesaje
     first_message = messages[0] if messages else None
     recent_messages = messages[-(MAX_MESSAGES_TO_SEND_TO_AI - 1):-1]
     
@@ -296,14 +287,13 @@ def save_message_with_limits(session_id: str, role: str, content: str):
     """Salvează mesaj și verifică limitele."""
     save_message_to_db(session_id, role, content)
     
-    # Verifică și curăță DB-ul la fiecare 10 mesaje
     if len(st.session_state.get("messages", [])) % 10 == 0:
         trim_db_messages(session_id)
     
     trim_session_messages()
 
 
-# === AUDIO / TTS FUNCTIONS (FIX LATEX ÎN AUDIO + VOCE BĂRBAT + UNITĂȚI FIZICE) ===
+# === AUDIO / TTS FUNCTIONS ===
 def clean_text_for_audio(text: str) -> str:
     """Curăță textul de LaTeX, SVG, Markdown pentru TTS."""
     if not text:
@@ -314,11 +304,10 @@ def clean_text_for_audio(text: str) -> str:
                   ' Am desenat o figură pentru tine. ', text, flags=re.DOTALL)
     text = re.sub(r'<svg.*?</svg>', ' ', text, flags=re.DOTALL)
     
-    # 2. UNITĂȚI DE MĂSURĂ CU CONTEXT (trebuie procesate PRIMELE!)
-    # Pattern pentru numere: întregi sau cu zecimale (0.1, 3.14, 100, 2,5)
+    # 2. UNITĂȚI DE MĂSURĂ CU CONTEXT (procesate PRIMELE!)
     num = r'(\d+[.,]?\d*)'
     
-    # Rezistență - Ω (ohmi) - IMPORTANT: procesăm ÎNAINTE de grecești!
+    # Rezistență - Ω (ohmi)
     text = re.sub(num + r'\s*GΩ', r'\1 gigaohmi', text)
     text = re.sub(num + r'\s*MΩ', r'\1 megaohmi', text)
     text = re.sub(num + r'\s*kΩ', r'\1 kiloohmi', text)
@@ -512,7 +501,11 @@ def clean_text_for_audio(text: str) -> str:
     text = re.sub(num + r'\s*rad\b', r'\1 radiani', text)
     text = re.sub(num + r'\s*sr\b', r'\1 steradiani', text)
     
-    # 3. ÎNLOCUIRI SPECIALE PENTRU COMBINAȚII
+    # 3. INDICI CU UNDERSCORE (P_r, V_0, etc.)
+    text = re.sub(r'([A-Za-zα-ωΑ-Ω])\s*_\s*\{([^}]+)\}', r'\1 indice \2', text)
+    text = re.sub(r'([A-Za-zα-ωΑ-Ω])\s*_\s*([A-Za-z0-9α-ωΑ-Ω]+)', r'\1 indice \2', text)
+    
+    # 4. ÎNLOCUIRI SPECIALE PENTRU COMBINAȚII
     special_combinations = {
         '>=': ' mai mare sau egal cu ',
         '<=': ' mai mic sau egal cu ',
@@ -535,7 +528,7 @@ def clean_text_for_audio(text: str) -> str:
     for combo, replacement in special_combinations.items():
         text = text.replace(combo, replacement)
     
-    # 4. CARACTERE UNICODE GRECEȘTI ȘI SIMBOLURI
+    # 5. CARACTERE UNICODE GRECEȘTI ȘI SIMBOLURI
     greek_unicode = {
         # Litere mici grecești
         'α': ' alfa ',
@@ -589,6 +582,57 @@ def clean_text_for_audio(text: str) -> str:
         'Χ': ' hi ',
         'Ψ': ' psi ',
         'Ω': ' omega ',
+        
+        # Litere subscript Unicode (indici)
+        'ₐ': ' indice a ',
+        'ₑ': ' indice e ',
+        'ₕ': ' indice h ',
+        'ᵢ': ' indice i ',
+        'ⱼ': ' indice j ',
+        'ₖ': ' indice k ',
+        'ₗ': ' indice l ',
+        'ₘ': ' indice m ',
+        'ₙ': ' indice n ',
+        'ₒ': ' indice o ',
+        'ₚ': ' indice p ',
+        'ᵣ': ' indice r ',
+        'ₛ': ' indice s ',
+        'ₜ': ' indice t ',
+        'ᵤ': ' indice u ',
+        'ᵥ': ' indice v ',
+        'ₓ': ' indice x ',
+        'ᵦ': ' indice beta ',
+        'ᵧ': ' indice gama ',
+        'ᵨ': ' indice ro ',
+        'ᵩ': ' indice fi ',
+        'ᵪ': ' indice hi ',
+        
+        # Litere superscript Unicode (exponenți)
+        'ᵃ': ' la puterea a ',
+        'ᵇ': ' la puterea b ',
+        'ᶜ': ' la puterea c ',
+        'ᵈ': ' la puterea d ',
+        'ᵉ': ' la puterea e ',
+        'ᶠ': ' la puterea f ',
+        'ᵍ': ' la puterea g ',
+        'ʰ': ' la puterea h ',
+        'ⁱ': ' la puterea i ',
+        'ʲ': ' la puterea j ',
+        'ᵏ': ' la puterea k ',
+        'ˡ': ' la puterea l ',
+        'ᵐ': ' la puterea m ',
+        'ⁿ': ' la puterea n ',
+        'ᵒ': ' la puterea o ',
+        'ᵖ': ' la puterea p ',
+        'ʳ': ' la puterea r ',
+        'ˢ': ' la puterea s ',
+        'ᵗ': ' la puterea t ',
+        'ᵘ': ' la puterea u ',
+        'ᵛ': ' la puterea v ',
+        'ʷ': ' la puterea w ',
+        'ˣ': ' la puterea x ',
+        'ʸ': ' la puterea y ',
+        'ᶻ': ' la puterea z ',
         
         # Simboluri matematice Unicode
         '∞': ' infinit ',
@@ -662,7 +706,7 @@ def clean_text_for_audio(text: str) -> str:
         '∙': ' ori ',
         '⋅': ' ori ',
         
-        # Indici și exponenți Unicode
+        # Indici și exponenți numerici Unicode
         '⁰': ' la puterea 0 ',
         '¹': ' la puterea 1 ',
         '²': ' la pătrat ',
@@ -676,7 +720,6 @@ def clean_text_for_audio(text: str) -> str:
         '⁺': ' plus ',
         '⁻': ' minus ',
         '⁼': ' egal ',
-        'ⁿ': ' la puterea n ',
         '₀': ' indice 0 ',
         '₁': ' indice 1 ',
         '₂': ' indice 2 ',
@@ -690,8 +733,6 @@ def clean_text_for_audio(text: str) -> str:
         '₊': ' plus ',
         '₋': ' minus ',
         '₌': ' egal ',
-        'ₙ': ' indice n ',
-        'ₓ': ' indice x ',
         
         # Fracții Unicode
         '½': ' o doime ',
@@ -741,32 +782,24 @@ def clean_text_for_audio(text: str) -> str:
     for symbol, pronunciation in greek_unicode.items():
         text = text.replace(symbol, pronunciation)
     
-    # 5. Tratare specială pentru punctuație în context matematic
-    # ":" între cifre = proporție matematică
+    # 6. Tratare specială pentru punctuație în context matematic
     text = re.sub(r'(\d)\s*:\s*(\d)', r'\1 este la \2', text)
-    # "/" între cifre = fracție
     text = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1 supra \2', text)
-    # ":" în alte contexte = pauză/punct
     text = re.sub(r':\s*$', '.', text)
     text = re.sub(r':\s*\n', '.\n', text)
     text = re.sub(r'(\w):\s+', r'\1. ', text)
     
-    # 6. Convertește LaTeX comun în text citibil (ROMÂNĂ)
+    # 7. Convertește LaTeX comun în text citibil
     latex_to_text = {
-        # Operații de bază
         r'\\sqrt\{([^}]+)\}': r' radical din \1 ',
         r'\\sqrt\[(\d+)\]\{([^}]+)\}': r' radical de ordin \1 din \2 ',
         r'\\frac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
         r'\\dfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
         r'\\tfrac\{([^}]+)\}\{([^}]+)\}': r' \1 supra \2 ',
-        
-        # Puteri și indici
         r'\^(\d+)': r' la puterea \1 ',
         r'\^\{([^}]+)\}': r' la puterea \1 ',
         r'_(\d+)': r' indice \1 ',
         r'_\{([^}]+)\}': r' indice \1 ',
-        
-        # Simboluri grecești LaTeX
         r'\\alpha': ' alfa ',
         r'\\beta': ' beta ',
         r'\\gamma': ' gama ',
@@ -796,8 +829,6 @@ def clean_text_for_audio(text: str) -> str:
         r'\\chi': ' hi ',
         r'\\psi': ' psi ',
         r'\\omega': ' omega ',
-        
-        # Litere mari grecești LaTeX
         r'\\Gamma': ' gama ',
         r'\\Delta': ' delta ',
         r'\\Theta': ' teta ',
@@ -809,8 +840,6 @@ def clean_text_for_audio(text: str) -> str:
         r'\\Phi': ' fi ',
         r'\\Psi': ' psi ',
         r'\\Omega': ' omega ',
-        
-        # Operatori
         r'\\times': ' ori ',
         r'\\cdot': ' ori ',
         r'\\div': ' împărțit la ',
@@ -853,15 +882,11 @@ def clean_text_for_audio(text: str) -> str:
         r'\\sinh': ' sinus hiperbolic de ',
         r'\\cosh': ' cosinus hiperbolic de ',
         r'\\tanh': ' tangentă hiperbolică de ',
-        
-        # Fracții speciale
         r'\\frac\{1\}\{2\}': ' o doime ',
         r'\\frac\{1\}\{3\}': ' o treime ',
         r'\\frac\{2\}\{3\}': ' două treimi ',
         r'\\frac\{1\}\{4\}': ' un sfert ',
         r'\\frac\{3\}\{4\}': ' trei sferturi ',
-        
-        # Săgeți și relații
         r'\\rightarrow': ' implică ',
         r'\\to': ' tinde la ',
         r'\\Rightarrow': ' rezultă că ',
@@ -882,15 +907,11 @@ def clean_text_for_audio(text: str) -> str:
         r'\\cap': ' intersectat cu ',
         r'\\emptyset': ' mulțimea vidă ',
         r'\\varnothing': ' mulțimea vidă ',
-        
-        # Mulțimi speciale
         r'\\mathbb\{R\}': ' mulțimea numerelor reale ',
         r'\\mathbb\{N\}': ' mulțimea numerelor naturale ',
         r'\\mathbb\{Z\}': ' mulțimea numerelor întregi ',
         r'\\mathbb\{Q\}': ' mulțimea numerelor raționale ',
         r'\\mathbb\{C\}': ' mulțimea numerelor complexe ',
-        
-        # Alte simboluri
         r'\\partial': ' derivata parțială ',
         r'\\nabla': ' nabla ',
         r'\\degree': ' grade ',
@@ -907,22 +928,21 @@ def clean_text_for_audio(text: str) -> str:
         r'\\gt': ' mai mare decât ',
     }
     
-    # Aplică conversiile LaTeX
     for pattern, replacement in latex_to_text.items():
         text = re.sub(pattern, replacement, text)
     
-    # 7. Elimină delimitatorii LaTeX rămași
+    # 8. Elimină delimitatorii LaTeX rămași
     text = re.sub(r'\$\$([^$]+)\$\$', r' \1 ', text)
     text = re.sub(r'\$([^$]+)\$', r' \1 ', text)
     text = re.sub(r'\\\[(.+?)\\\]', r' \1 ', text, flags=re.DOTALL)
     text = re.sub(r'\\\((.+?)\\\)', r' \1 ', text)
     
-    # 8. Curăță comenzile LaTeX rămase
+    # 9. Curăță comenzile LaTeX rămase
     text = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', text)
     text = re.sub(r'\\[a-zA-Z]+', '', text)
     text = re.sub(r'[{}\\]', '', text)
     
-    # 9. Elimină Markdown
+    # 10. Elimină Markdown
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
     text = re.sub(r'\*([^*]+)\*', r'\1', text)
     text = re.sub(r'`([^`]+)`', r'\1', text)
@@ -930,19 +950,19 @@ def clean_text_for_audio(text: str) -> str:
     text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     
-    # 10. Elimină HTML rămas
+    # 11. Elimină HTML rămas
     text = re.sub(r'<[^>]+>', '', text)
     
-    # 11. Curăță caractere speciale rămase
+    # 12. Curăță caractere speciale rămase
     text = re.sub(r'[│▌►◄■▪▫\[\](){}]', ' ', text)
     
-    # 12. Curăță ":" rămase
+    # 13. Curăță ":" rămase
     text = re.sub(r'\s*:\s*', '. ', text)
     
-    # 13. Curăță spații multiple
+    # 14. Curăță spații multiple
     text = re.sub(r'\s+', ' ', text)
     
-    # 14. Limitează lungimea
+    # 15. Limitează lungimea
     text = text.strip()
     if len(text) > 3000:
         text = text[:3000]
@@ -979,7 +999,6 @@ async def _generate_audio_edge_tts(text: str, voice: str = VOICE_MALE_RO) -> byt
 def generate_professor_voice(text: str, voice: str = VOICE_MALE_RO) -> BytesIO:
     """Wrapper sincron pentru Edge TTS - voce de bărbat (Domnul Profesor)."""
     try:
-        # Creează un nou event loop pentru fiecare apel
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
@@ -1007,11 +1026,9 @@ def repair_svg(svg_content: str) -> str:
     
     svg_content = svg_content.strip()
     
-    # Verifică dacă avem tag <svg> de deschidere
     has_svg_open = bool(re.search(r'<svg[^>]*>', svg_content, re.IGNORECASE))
     has_svg_close = '</svg>' in svg_content.lower()
     
-    # Cazul 1: Lipsește complet <svg>
     if not has_svg_open:
         svg_content = f'''<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg" 
                              style="max-width: 100%; height: auto; background-color: white;">
@@ -1019,22 +1036,17 @@ def repair_svg(svg_content: str) -> str:
         </svg>'''
         return svg_content
     
-    # Cazul 2: Are <svg> dar lipsește </svg>
     if has_svg_open and not has_svg_close:
         svg_content = svg_content + '\n</svg>'
     
-    # Cazul 3: Are </svg> dar lipsește <svg>
     if not has_svg_open and has_svg_close:
         svg_content = f'<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">\n{svg_content}'
     
-    # Repară tag-uri ne-închise
     svg_content = repair_unclosed_tags(svg_content)
     
-    # Adaugă xmlns dacă lipsește
     if 'xmlns=' not in svg_content:
         svg_content = svg_content.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"', 1)
     
-    # Adaugă viewBox dacă lipsește
     if 'viewBox=' not in svg_content.lower():
         svg_content = svg_content.replace('<svg', '<svg viewBox="0 0 800 600"', 1)
     
@@ -1043,11 +1055,9 @@ def repair_svg(svg_content: str) -> str:
 
 def repair_unclosed_tags(svg_content: str) -> str:
     """Repară tag-uri SVG comune care nu sunt închise corect."""
-    # Tag-uri care trebuie să fie self-closing
     self_closing_tags = ['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'image', 'use']
     
     for tag in self_closing_tags:
-        # Pattern: <tag ... > fără />
         pattern = rf'<{tag}([^>]*[^/])>'
         
         def fix_tag(match):
@@ -1056,7 +1066,6 @@ def repair_unclosed_tags(svg_content: str) -> str:
         
         svg_content = re.sub(pattern, fix_tag, svg_content)
     
-    # Repară tag-uri <text> ne-închise
     text_opens = len(re.findall(r'<text[^>]*>', svg_content))
     text_closes = len(re.findall(r'</text>', svg_content))
     
@@ -1064,7 +1073,6 @@ def repair_unclosed_tags(svg_content: str) -> str:
         for _ in range(text_opens - text_closes):
             svg_content = svg_content.replace('</svg>', '</text></svg>')
     
-    # Repară tag-uri <g> ne-închise
     g_opens = len(re.findall(r'<g[^>]*>', svg_content))
     g_closes = len(re.findall(r'</g>', svg_content))
     
@@ -1086,7 +1094,6 @@ def validate_svg(svg_content: str) -> tuple:
     if '</svg>' not in svg_content.lower():
         return False, "Lipsește tag-ul </svg>"
     
-    # Verifică dacă are conținut vizual
     visual_elements = ['path', 'rect', 'circle', 'ellipse', 'line', 'text', 'polygon', 'polyline', 'image']
     has_content = any(f'<{elem}' in svg_content.lower() for elem in visual_elements)
     
@@ -1098,12 +1105,10 @@ def validate_svg(svg_content: str) -> tuple:
 
 def render_message_with_svg(content: str):
     """Renderează mesajul cu suport îmbunătățit pentru SVG."""
-    # Verifică dacă conținutul are SVG
     has_svg_markers = '[[DESEN_SVG]]' in content or '<svg' in content.lower()
     has_svg_elements = any(tag in content.lower() for tag in ['<path', '<rect', '<circle', '<line', '<polygon'])
     
     if has_svg_markers or (has_svg_elements and 'stroke=' in content):
-        # Extrage și repară SVG
         svg_code = None
         before_text = ""
         after_text = ""
@@ -1124,17 +1129,13 @@ def render_message_with_svg(content: str):
                 before_text = content[:svg_match.start()]
                 after_text = content[svg_match.end():]
             else:
-                # SVG incomplet - încearcă să-l repare
                 svg_start = content.lower().find('<svg')
                 if svg_start != -1:
                     before_text = content[:svg_start]
                     svg_code = content[svg_start:]
         
         if svg_code:
-            # Repară SVG-ul
             svg_code = repair_svg(svg_code)
-            
-            # Validează
             is_valid, error = validate_svg(svg_code)
             
             if is_valid:
@@ -1152,7 +1153,6 @@ def render_message_with_svg(content: str):
             else:
                 st.warning(f"⚠️ Desenul nu a putut fi afișat corect: {error}")
     
-    # Fallback: renderează ca text normal
     clean_content = content
     clean_content = re.sub(r'\[\[DESEN_SVG\]\]', '\n🎨 *Desen:*\n', clean_content)
     clean_content = re.sub(r'\[\[/DESEN_SVG\]\]', '\n', clean_content)
@@ -1164,7 +1164,6 @@ def render_message_with_svg(content: str):
 init_db()
 cleanup_old_sessions(CLEANUP_DAYS_OLD)
 
-# Session management
 session_id = get_or_create_session_id()
 st.session_state.session_id = session_id
 st.query_params["session_id"] = session_id
@@ -1334,7 +1333,6 @@ with st.sidebar:
     
     enable_audio = st.checkbox("🔊 Voce", value=False)
     
-    # Opțiune pentru alegerea vocii
     if enable_audio:
         voice_option = st.radio(
             "🎙️ Alege vocea:",
@@ -1376,7 +1374,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Debug info (opțional)
     if st.checkbox("🔧 Debug Info", value=False):
         msg_count = len(st.session_state.get("messages", []))
         st.caption(f"📊 Mesaje în memorie: {msg_count}/{MAX_MESSAGES_IN_MEMORY}")
@@ -1388,7 +1385,6 @@ with st.sidebar:
 if "messages" not in st.session_state or not st.session_state.messages:
     st.session_state.messages = load_history_from_db(st.session_state.session_id)
 
-# Afișare mesaje existente
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         if msg["role"] == "assistant":
@@ -1399,26 +1395,22 @@ for msg in st.session_state.messages:
 
 # === CHAT INPUT ===
 if user_input := st.chat_input("Întreabă profesorul..."):
-    # Afișează mesajul utilizatorului
     st.chat_message("user").write(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
     save_message_with_limits(st.session_state.session_id, "user", user_input)
     
-    # Pregătește contextul pentru AI (cu limită)
     context_messages = get_context_for_ai(st.session_state.messages)
     history_obj = []
     for msg in context_messages:
         role_gemini = "model" if msg["role"] == "assistant" else "user"
         history_obj.append({"role": role_gemini, "parts": [msg["content"]]})
     
-    # Pregătește payload-ul
     final_payload = []
     if media_content:
         final_payload.append("Analizează materialul atașat:")
         final_payload.append(media_content)
     final_payload.append(user_input)
     
-    # Generează răspunsul
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
@@ -1429,7 +1421,6 @@ if user_input := st.chat_input("Întreabă profesorul..."):
             for text_chunk in stream_generator:
                 full_response += text_chunk
                 
-                # Afișare progresivă
                 if "<svg" in full_response or ("<path" in full_response and "stroke=" in full_response):
                     message_placeholder.markdown(
                         full_response.split("<path")[0] + "\n\n*🎨 Domnul Profesor desenează...*\n\n▌"
@@ -1437,15 +1428,12 @@ if user_input := st.chat_input("Întreabă profesorul..."):
                 else:
                     message_placeholder.markdown(full_response + "▌")
             
-            # Renderează răspunsul final
             message_placeholder.empty()
             render_message_with_svg(full_response)
             
-            # Salvează în istoric
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             save_message_with_limits(st.session_state.session_id, "assistant", full_response)
             
-            # Generează audio dacă e activat
             if enable_audio:
                 with st.spinner("🎙️ Domnul Profesor vorbește..."):
                     audio_file = generate_professor_voice(full_response, selected_voice)
